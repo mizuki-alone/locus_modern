@@ -112,6 +112,16 @@ root
 - F2: 編集
 - Ctrl+Enter: 編集確定
 
+## Phase ロードマップ
+
+| Phase | 内容 |
+|-------|------|
+| Phase 1 | ツリー表示 + ↑↓選択 + Escape（今回） |
+| Phase 2 | キーボードでの構造操作（→← 展開/折り畳み, Alt+矢印, Tab, Delete, F2 等） |
+| Phase 3 | ドラッグ＆ドロップ（`@dnd-kit/core` 等で実装。キーボード操作が先に完成していること前提） |
+
+D&D は Phase 3。キーボードで全操作が完結する状態を先に作り、D&D は「便利なショートカット」として後から載せる。
+
 ## 技術スタック
 - Next.js (App Router) + TypeScript
 - Tailwind CSS

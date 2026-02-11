@@ -1,5 +1,7 @@
 "use client";
 
+import { useRef, useEffect } from "react";
+
 export interface TreeNodeData {
   id: number;
   text: string;
@@ -11,13 +13,38 @@ export interface TreeNodeData {
 interface TreeNodeProps {
   node: TreeNodeData;
   selectedId: number | null;
+  editingId: number | null;
+  editText: string;
   onSelect: (id: number) => void;
+  onToggle: (id: number) => void;
+  onEditTextChange: (text: string) => void;
+  onEditConfirm: () => void;
+  onEditCancel: () => void;
 }
 
-export default function TreeNode({ node, selectedId, onSelect }: TreeNodeProps) {
+export default function TreeNode({
+  node,
+  selectedId,
+  editingId,
+  editText,
+  onSelect,
+  onToggle,
+  onEditTextChange,
+  onEditConfirm,
+  onEditCancel,
+}: TreeNodeProps) {
   const isSelected = selectedId === node.id;
+  const isEditing = editingId === node.id;
   const hasChildren = node.children.length > 0;
   const firstLine = node.text.split("\n")[0];
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
 
   return (
     <div>
@@ -31,13 +58,45 @@ export default function TreeNode({ node, selectedId, onSelect }: TreeNodeProps) 
         onClick={() => onSelect(node.id)}
         data-node-id={node.id}
       >
-        {hasChildren && (
-          <span className="mr-1 w-4 text-center text-xs text-zinc-400">
+        {hasChildren ? (
+          <span
+            className={`mr-1 w-4 text-center text-xs ${
+              isSelected ? "text-blue-200" : "text-zinc-400"
+            }`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle(node.id);
+            }}
+          >
             {node.closed ? "▶" : "▼"}
           </span>
+        ) : (
+          <span className={`mr-1 w-4 text-center text-xs ${
+            isSelected ? "text-blue-200" : "text-zinc-300 dark:text-zinc-600"
+          }`}>•</span>
         )}
-        {!hasChildren && <span className="mr-1 w-4" />}
-        <span className="truncate">{firstLine}</span>
+
+        {isEditing ? (
+          <input
+            ref={inputRef}
+            className="flex-1 bg-white text-zinc-900 px-1 rounded outline-none border border-blue-400"
+            value={editText}
+            onChange={(e) => onEditTextChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && e.ctrlKey) {
+                e.preventDefault();
+                onEditConfirm();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                onEditCancel();
+              }
+              e.stopPropagation();
+            }}
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <span className="truncate">{firstLine || "(empty)"}</span>
+        )}
       </div>
 
       {!node.closed &&
@@ -46,7 +105,13 @@ export default function TreeNode({ node, selectedId, onSelect }: TreeNodeProps) 
             key={child.id}
             node={child}
             selectedId={selectedId}
+            editingId={editingId}
+            editText={editText}
             onSelect={onSelect}
+            onToggle={onToggle}
+            onEditTextChange={onEditTextChange}
+            onEditConfirm={onEditConfirm}
+            onEditCancel={onEditCancel}
           />
         ))}
     </div>

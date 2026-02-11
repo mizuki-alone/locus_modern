@@ -91,12 +91,44 @@ function parseMemo(content: string): TreeNode[] {
   return children;
 }
 
+const MEMO_PATH = path.join(process.cwd(), "src", "app", "api", "tree", "memo.cgi");
+
 export async function GET() {
   try {
-    const memoPath = path.join(process.cwd(), "src", "app", "api", "tree", "memo.cgi");
-    const content = fs.readFileSync(memoPath, "utf-8");
+    const content = fs.readFileSync(MEMO_PATH, "utf-8");
     const nodes = parseMemo(content);
     return NextResponse.json({ nodes });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+function encode(text: string): string {
+  return text.replace(/ /g, "%{s}").replace(/\n/g, "%{n}");
+}
+
+function serializeTree(nodes: TreeNode[], indent: number): string {
+  let result = "";
+  for (const node of nodes) {
+    const prefix = " ".repeat(indent);
+    result += prefix + encode(node.text) + "\n";
+    if (node.closed) {
+      result += prefix + " !{close}\n";
+    }
+    if (node.children.length > 0) {
+      result += serializeTree(node.children, indent + 1);
+    }
+  }
+  return result;
+}
+
+export async function PUT(request: Request) {
+  try {
+    const { nodes } = (await request.json()) as { nodes: TreeNode[] };
+    const content = "root\n" + serializeTree(nodes, 1);
+    fs.writeFileSync(MEMO_PATH, content, "utf-8");
+    return NextResponse.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });
