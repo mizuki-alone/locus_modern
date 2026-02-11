@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Locus CMS",
-  description: "Tree-structured CMS",
+  title: "Locus",
+  description: "Tree-structured outliner",
 };
 
 export default function RootLayout({

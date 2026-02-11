@@ -36,20 +36,26 @@ export default function TreeNode({
   const isSelected = selectedId === node.id;
   const isEditing = editingId === node.id;
   const hasChildren = node.children.length > 0;
-  const firstLine = node.text.split("\n")[0];
-  const inputRef = useRef<HTMLInputElement>(null);
+  const hasMultiline = node.text.includes("\n");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  function autoResize(el: HTMLTextAreaElement) {
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  }
 
   useEffect(() => {
-    if (isEditing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
+    if (isEditing && textareaRef.current) {
+      textareaRef.current.focus();
+      textareaRef.current.select();
+      autoResize(textareaRef.current);
     }
   }, [isEditing]);
 
   return (
     <div>
       <div
-        className={`flex items-center cursor-pointer select-none py-0.5 px-2 rounded ${
+        className={`flex items-start cursor-pointer select-none py-0.5 px-2 rounded ${
           isSelected
             ? "bg-blue-600 text-white"
             : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
@@ -60,7 +66,7 @@ export default function TreeNode({
       >
         {hasChildren ? (
           <span
-            className={`mr-1 w-4 text-center text-xs ${
+            className={`mr-1 mt-0.5 w-4 shrink-0 text-center text-xs ${
               isSelected ? "text-blue-200" : "text-zinc-400"
             }`}
             onClick={(e) => {
@@ -71,17 +77,21 @@ export default function TreeNode({
             {node.closed ? "▶" : "▼"}
           </span>
         ) : (
-          <span className={`mr-1 w-4 text-center text-xs ${
+          <span className={`mr-1 mt-0.5 w-4 shrink-0 text-center text-xs ${
             isSelected ? "text-blue-200" : "text-zinc-300 dark:text-zinc-600"
           }`}>•</span>
         )}
 
         {isEditing ? (
-          <input
-            ref={inputRef}
-            className="flex-1 bg-white text-zinc-900 px-1 rounded outline-none border border-blue-400"
+          <textarea
+            ref={textareaRef}
+            rows={1}
+            className="flex-1 bg-white text-zinc-900 px-1 rounded outline-none border border-blue-400 resize-none overflow-hidden leading-snug"
             value={editText}
-            onChange={(e) => onEditTextChange(e.target.value)}
+            onChange={(e) => {
+              onEditTextChange(e.target.value);
+              autoResize(e.target);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && e.ctrlKey) {
                 e.preventDefault();
@@ -95,7 +105,9 @@ export default function TreeNode({
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <span className="truncate">{firstLine || "(empty)"}</span>
+          <span className={hasMultiline ? "whitespace-pre-wrap" : "truncate"}>
+            {node.text || "(empty)"}
+          </span>
         )}
       </div>
 

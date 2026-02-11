@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import TreeNode, { TreeNodeData } from "./components/TreeNode";
 import {
   flattenVisible,
@@ -18,13 +18,7 @@ import {
   nextId,
 } from "./lib/treeUtils";
 
-function saveTree(nodes: TreeNodeData[]) {
-  fetch("/api/tree", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ nodes }),
-  });
-}
+type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 export default function Home() {
   const [nodes, setNodes] = useState<TreeNodeData[]>([]);
@@ -32,6 +26,30 @@ export default function Home() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const undoStack = useRef<TreeNodeData[][]>([]);
+  const redoStack = useRef<TreeNodeData[][]>([]);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const saveTree = useCallback((data: TreeNodeData[]) => {
+    setSaveStatus("saving");
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    fetch("/api/tree", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nodes: data }),
+    })
+      .then((res) => {
+        setSaveStatus(res.ok ? "saved" : "error");
+        saveTimerRef.current = setTimeout(() => setSaveStatus("idle"), 2000);
+      })
+      .catch(() => {
+        setSaveStatus("error");
+        saveTimerRef.current = setTimeout(() => setSaveStatus("idle"), 3000);
+      });
+  }, []);
+
+  const nodesRef = useRef<TreeNodeData[]>([]);
 
   useEffect(() => {
     fetch("/api/tree")
@@ -41,6 +59,7 @@ export default function Home() {
           setError(data.error);
         } else {
           setNodes(data.nodes);
+          nodesRef.current = data.nodes;
         }
       })
       .catch((err) => setError(err.message));
@@ -48,11 +67,32 @@ export default function Home() {
 
   const update = useCallback(
     (newNodes: TreeNodeData[]) => {
+      undoStack.current.push(nodesRef.current);
+      redoStack.current = [];
+      nodesRef.current = newNodes;
       setNodes(newNodes);
       saveTree(newNodes);
     },
-    []
+    [saveTree]
   );
+
+  const undo = useCallback(() => {
+    const prev = undoStack.current.pop();
+    if (!prev) return;
+    redoStack.current.push(nodesRef.current);
+    nodesRef.current = prev;
+    setNodes(prev);
+    saveTree(prev);
+  }, [saveTree]);
+
+  const redo = useCallback(() => {
+    const next = redoStack.current.pop();
+    if (!next) return;
+    undoStack.current.push(nodesRef.current);
+    nodesRef.current = next;
+    setNodes(next);
+    saveTree(next);
+  }, [saveTree]);
 
   const startEdit = useCallback(
     (id: number) => {
@@ -87,7 +127,20 @@ export default function Home() {
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // Don't handle keys while editing (input handles its own keys)
+      // Undo/Redo works even during editing
+      const key = e.key.toLowerCase();
+      if (key === "z" && e.ctrlKey && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+        return;
+      }
+      if ((key === "y" && e.ctrlKey) || (key === "z" && e.ctrlKey && e.shiftKey)) {
+        e.preventDefault();
+        redo();
+        return;
+      }
+
+      // Don't handle other keys while editing (input handles its own keys)
       if (editingId !== null) return;
 
       const visible = flattenVisible(nodes);
@@ -221,7 +274,7 @@ export default function Home() {
         }
       }
     },
-    [nodes, selectedId, editingId, startEdit, update]
+    [nodes, selectedId, editingId, startEdit, update, undo, redo]
   );
 
   useEffect(() => {
@@ -256,7 +309,26 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
       <div className="mx-auto max-w-3xl py-4">
-        <h1 className="px-4 pb-3 text-lg font-semibold">Locus CMS</h1>
+        <div className="flex items-center justify-between px-4 pb-3">
+          <h1 className="text-lg font-semibold">Locus</h1>
+          {saveStatus !== "idle" && (
+            <span
+              className={`text-xs ${
+                saveStatus === "saving"
+                  ? "text-zinc-400"
+                  : saveStatus === "saved"
+                    ? "text-green-500"
+                    : "text-red-500"
+              }`}
+            >
+              {saveStatus === "saving"
+                ? "保存中..."
+                : saveStatus === "saved"
+                  ? "保存済み"
+                  : "保存失敗"}
+            </span>
+          )}
+        </div>
         <div className="text-sm font-mono">
           {nodes.map((node) => (
             <TreeNode
