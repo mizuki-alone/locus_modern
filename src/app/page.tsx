@@ -9,6 +9,7 @@ import {
   toggleNode,
   setNodeClosed,
   updateNodeText,
+  addSiblingNode,
   addChildNode,
   deleteNode,
   indentNode,
@@ -65,9 +66,14 @@ export default function Home() {
       .catch((err) => setError(err.message));
   }, []);
 
+  const UNDO_LIMIT = 1000;
+
   const update = useCallback(
     (newNodes: TreeNodeData[]) => {
       undoStack.current.push(nodesRef.current);
+      if (undoStack.current.length > UNDO_LIMIT) {
+        undoStack.current.splice(0, undoStack.current.length - UNDO_LIMIT);
+      }
       redoStack.current = [];
       nodesRef.current = newNodes;
       setNodes(newNodes);
@@ -156,6 +162,20 @@ export default function Home() {
       if (e.key === "F2" && selectedId !== null) {
         e.preventDefault();
         startEdit(selectedId);
+        return;
+      }
+
+      // Enter: add sibling node
+      if (e.key === "Enter" && selectedId !== null) {
+        e.preventDefault();
+        const newId = nextId(nodes);
+        const result = addSiblingNode(nodes, selectedId, newId);
+        if (result) {
+          update(result.tree);
+          setSelectedId(newId);
+          setEditingId(newId);
+          setEditText("");
+        }
         return;
       }
 

@@ -123,10 +123,37 @@ function serializeTree(nodes: TreeNode[], indent: number): string {
   return result;
 }
 
+const BACKUP_MAX = 10;
+
+function backupPath(n: number): string {
+  const dir = path.dirname(MEMO_PATH);
+  const num = String(n).padStart(2, "0");
+  return path.join(dir, `memo_${num}.cgi`);
+}
+
+function rotateBackups() {
+  // Delete oldest if it exists
+  const oldest = backupPath(BACKUP_MAX);
+  if (fs.existsSync(oldest)) fs.unlinkSync(oldest);
+
+  // Shift: _09 → _10, _08 → _09, ... _01 → _02
+  for (let i = BACKUP_MAX - 1; i >= 1; i--) {
+    const from = backupPath(i);
+    const to = backupPath(i + 1);
+    if (fs.existsSync(from)) fs.renameSync(from, to);
+  }
+
+  // Copy current to _01
+  if (fs.existsSync(MEMO_PATH)) {
+    fs.copyFileSync(MEMO_PATH, backupPath(1));
+  }
+}
+
 export async function PUT(request: Request) {
   try {
     const { nodes } = (await request.json()) as { nodes: TreeNode[] };
     const content = "root\n" + serializeTree(nodes, 1);
+    rotateBackups();
     fs.writeFileSync(MEMO_PATH, content, "utf-8");
     return NextResponse.json({ ok: true });
   } catch (error) {

@@ -110,6 +110,28 @@ export function updateNodeText(
   return tree;
 }
 
+/** Add a sibling node after the given node */
+export function addSiblingNode(
+  nodes: TreeNodeData[],
+  siblingId: number,
+  newId: number
+): { tree: TreeNodeData[]; newNode: TreeNodeData } | null {
+  const tree = cloneTree(nodes);
+  const ctx = findParentContext(tree, siblingId);
+  if (!ctx) return null;
+
+  const sibling = ctx.siblings[ctx.index];
+  const newNode: TreeNodeData = {
+    id: newId,
+    text: "",
+    indent: sibling.indent,
+    closed: false,
+    children: [],
+  };
+  ctx.siblings.splice(ctx.index + 1, 0, newNode);
+  return { tree, newNode };
+}
+
 /** Add a child node to the given parent */
 export function addChildNode(
   nodes: TreeNodeData[],
