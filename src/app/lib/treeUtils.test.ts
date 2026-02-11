@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { filterTree, copyNode, pasteNode, findNode, nextId } from "./treeUtils";
+import { filterTree, copyNode, pasteNode, findNode, nextId, moveNode } from "./treeUtils";
 import { TreeNodeData } from "../components/TreeNode";
 
 // テスト用のツリー構造
@@ -119,6 +119,87 @@ describe("copyNode / pasteNode（コピー＆ペースト）", () => {
   it("存在しないノードをコピーするとnullが返る", () => {
     const copied = copyNode(testTree, 999);
     expect(copied).toBeNull();
+  });
+});
+
+describe("moveNode（ドラッグ＆ドロップ移動）", () => {
+  it("兄弟として挿入: ノードを別のノードの後に移動できる", () => {
+    // 「タスク」(id:6) を「覚書」(id:1) の後に兄弟として移動
+    const result = moveNode(testTree, 6, 1, "after");
+    expect(result).not.toBeNull();
+    // トップレベルの順序: 覚書, タスク
+    expect(result!.length).toBe(2);
+    expect(result![0].text).toBe("覚書");
+    expect(result![1].text).toBe("タスク");
+  });
+
+  it("子として挿入: ノードを別のノードの子にできる", () => {
+    // 「タスク」(id:6) を「デザイン」(id:2) の子として移動
+    const result = moveNode(testTree, 6, 2, "child");
+    expect(result).not.toBeNull();
+    const design = findNode(result!, 2)!;
+    const childTexts = design.children.map((c) => c.text);
+    expect(childTexts).toContain("タスク");
+  });
+
+  it("子として挿入: 移動されたノードの子も一緒に移動する", () => {
+    // 「タスク」(id:6) を「デザイン」(id:2) の子として移動
+    const result = moveNode(testTree, 6, 2, "child");
+    const task = findNode(result!, 6)!;
+    expect(task.children.length).toBe(1);
+    expect(task.children[0].text).toBe("買い物リスト");
+  });
+
+  it("自分自身への移動はnullを返す", () => {
+    const result = moveNode(testTree, 1, 1, "child");
+    expect(result).toBeNull();
+  });
+
+  it("自分の子孫への移動はnullを返す（ループ防止）", () => {
+    // 「覚書」(id:1) を自分の子である「デザイン」(id:2) の子にはできない
+    const result = moveNode(testTree, 1, 2, "child");
+    expect(result).toBeNull();
+  });
+
+  it("兄弟の前に挿入: ノードを別のノードの前に移動できる", () => {
+    // 「タスク」(id:6) を「覚書」(id:1) の前に移動
+    const result = moveNode(testTree, 6, 1, "before");
+    expect(result).not.toBeNull();
+    expect(result!.length).toBe(2);
+    expect(result![0].text).toBe("タスク");
+    expect(result![1].text).toBe("覚書");
+  });
+
+  it("before と after で正しい位置に挿入される", () => {
+    // 3兄弟: デザイン(2), コーディング(4) の間に「買い物リスト」(7)を挿入
+    // before コーディング = デザインの後に入る
+    const resultBefore = moveNode(testTree, 7, 4, "before");
+    expect(resultBefore).not.toBeNull();
+    const parent1 = findNode(resultBefore!, 1)!;
+    expect(parent1.children.map((c) => c.text)).toEqual(["デザイン", "買い物リスト", "コーディング"]);
+
+    // after デザイン = デザインの後に入る（同じ結果）
+    const resultAfter = moveNode(testTree, 7, 2, "after");
+    expect(resultAfter).not.toBeNull();
+    const parent2 = findNode(resultAfter!, 1)!;
+    expect(parent2.children.map((c) => c.text)).toEqual(["デザイン", "買い物リスト", "コーディング"]);
+  });
+
+  it("indent指定: 深い階層のノードの後ろに浅い階層で挿入できる", () => {
+    // 「買い物リスト」(id:7) を「配色ルール」(id:3, indent:3) の後ろに、indent:2 で挿入
+    // → 配色ルールの親「デザイン」(indent:2) の後ろに兄弟として入るべき
+    const result = moveNode(testTree, 7, 3, "after", 2);
+    expect(result).not.toBeNull();
+    const parent = findNode(result!, 1)!; // 覚書
+    expect(parent.children.map((c) => c.text)).toEqual(["デザイン", "買い物リスト", "コーディング"]);
+  });
+
+  it("indent指定: indent がノード自身と同じなら通常の兄弟挿入と同じ", () => {
+    // 「買い物リスト」(id:7) を「配色ルール」(id:3, indent:3) の後ろに、indent:3 で挿入
+    const result = moveNode(testTree, 7, 3, "after", 3);
+    expect(result).not.toBeNull();
+    const design = findNode(result!, 2)!; // デザイン
+    expect(design.children.map((c) => c.text)).toEqual(["配色ルール", "買い物リスト"]);
   });
 });
 

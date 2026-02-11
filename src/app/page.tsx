@@ -20,6 +20,7 @@ import {
   filterTree,
   copyNode,
   pasteNode,
+  moveNode,
 } from "./lib/treeUtils";
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -37,6 +38,7 @@ export default function Home() {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const clipboardRef = useRef<TreeNodeData | null>(null);
+  const [dragId, setDragId] = useState<number | null>(null);
 
   const saveTree = useCallback((data: TreeNodeData[]) => {
     setSaveStatus("saving");
@@ -379,6 +381,22 @@ export default function Home() {
     [nodes, update]
   );
 
+  const handleDrop = useCallback(
+    (srcId: number, targetId: number, position: "before" | "after" | "child", indent?: number) => {
+      const result = moveNode(nodes, srcId, targetId, position, indent);
+      if (result) {
+        update(result);
+        setSelectedId(srcId);
+      }
+      setDragId(null);
+    },
+    [nodes, update]
+  );
+
+  const handleDragEnd = useCallback(() => {
+    setDragId(null);
+  }, []);
+
   if (error) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -435,11 +453,15 @@ export default function Home() {
               selectedId={selectedId}
               editingId={editingId}
               editText={editText}
+              dragId={dragId}
               onSelect={setSelectedId}
               onToggle={handleToggle}
               onEditTextChange={setEditText}
               onEditConfirm={confirmEdit}
               onEditCancel={cancelEdit}
+              onDragStart={setDragId}
+              onDrop={handleDrop}
+              onDragEnd={handleDragEnd}
             />
           ))}
         </div>

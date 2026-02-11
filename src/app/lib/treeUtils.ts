@@ -347,3 +347,90 @@ export function pasteNode(
   ctx.siblings.splice(ctx.index + 1, 0, clone);
   return tree;
 }
+
+/** Check if ancestorId is an ancestor of nodeId */
+function isAncestor(
+  nodes: TreeNodeData[],
+  ancestorId: number,
+  nodeId: number
+): boolean {
+  const ancestor = findNode(nodes, ancestorId);
+  if (!ancestor) return false;
+  function search(children: TreeNodeData[]): boolean {
+    for (const child of children) {
+      if (child.id === nodeId) return true;
+      if (search(child.children)) return true;
+    }
+    return false;
+  }
+  return search(ancestor.children);
+}
+
+/** Move a node to a new position. mode: "after" = sibling after target, "child" = child of target.
+ *  targetIndent: optional indent level for before/after — walks up ancestors to find insertion point. */
+export function moveNode(
+  nodes: TreeNodeData[],
+  dragId: number,
+  targetId: number,
+  mode: "before" | "after" | "child",
+  targetIndent?: number
+): TreeNodeData[] | null {
+  if (dragId === targetId) return null;
+  if (isAncestor(nodes, dragId, targetId)) return null;
+
+  const tree = cloneTree(nodes);
+
+  // Remove dragged node from its current position
+  const dragCtx = findParentContext(tree, dragId);
+  if (!dragCtx) return null;
+  const dragNode = dragCtx.siblings.splice(dragCtx.index, 1)[0];
+
+  if (mode === "child") {
+    const target = findNode(tree, targetId);
+    if (!target) return null;
+    const delta = target.indent + 1 - dragNode.indent;
+    function adjustIndent(n: TreeNodeData, d: number) {
+      n.indent += d;
+      n.children.forEach((c) => adjustIndent(c, d));
+    }
+    adjustIndent(dragNode, delta);
+    target.children.push(dragNode);
+    target.closed = false;
+  } else {
+    // Walk up ancestors if a shallower indent is requested
+    let effectiveTargetId = targetId;
+    if (targetIndent !== undefined) {
+      const targetNode = findNode(tree, targetId);
+      if (targetNode && targetIndent < targetNode.indent) {
+        let currentId = targetId;
+        let current = targetNode;
+        while (current && current.indent > targetIndent) {
+          const ctx = findParentContext(tree, currentId);
+          if (ctx?.parent) {
+            currentId = ctx.parent.id;
+            current = ctx.parent;
+          } else {
+            break;
+          }
+        }
+        if (current && current.indent === targetIndent) {
+          effectiveTargetId = currentId;
+        }
+      }
+    }
+
+    const targetCtx = findParentContext(tree, effectiveTargetId);
+    if (!targetCtx) return null;
+    const target = targetCtx.siblings[targetCtx.index];
+    const delta = target.indent - dragNode.indent;
+    function adjustIndent(n: TreeNodeData, d: number) {
+      n.indent += d;
+      n.children.forEach((c) => adjustIndent(c, d));
+    }
+    adjustIndent(dragNode, delta);
+    const insertIndex = mode === "before" ? targetCtx.index : targetCtx.index + 1;
+    targetCtx.siblings.splice(insertIndex, 0, dragNode);
+  }
+
+  return tree;
+}
