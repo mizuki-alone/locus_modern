@@ -40,5 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# memo.cgi backups
+# memo.cgi data and backups
+memo.cgi
 memo_[0-9][0-9].cgi

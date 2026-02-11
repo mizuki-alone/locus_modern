@@ -93,8 +93,13 @@ function parseMemo(content: string): TreeNode[] {
 
 const MEMO_PATH = path.join(process.cwd(), "src", "app", "api", "tree", "memo.cgi");
 
+const INITIAL_CONTENT = "root\n";
+
 export async function GET() {
   try {
+    if (!fs.existsSync(MEMO_PATH)) {
+      fs.writeFileSync(MEMO_PATH, INITIAL_CONTENT, "utf-8");
+    }
     const content = fs.readFileSync(MEMO_PATH, "utf-8");
     const nodes = parseMemo(content);
     return NextResponse.json({ nodes });
