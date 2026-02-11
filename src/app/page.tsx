@@ -17,6 +17,9 @@ import {
   moveNodeUp,
   moveNodeDown,
   nextId,
+  filterTree,
+  copyNode,
+  pasteNode,
 } from "./lib/treeUtils";
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -27,10 +30,13 @@ export default function Home() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const undoStack = useRef<TreeNodeData[][]>([]);
   const redoStack = useRef<TreeNodeData[][]>([]);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const clipboardRef = useRef<TreeNodeData | null>(null);
 
   const saveTree = useCallback((data: TreeNodeData[]) => {
     setSaveStatus("saving");
@@ -131,6 +137,8 @@ export default function Home() {
     setEditingId(null);
   }, [editingId, nodes, editText, update]);
 
+  const displayNodes = searchQuery ? filterTree(nodes, searchQuery) : nodes;
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       // Undo/Redo works even during editing
@@ -146,15 +154,68 @@ export default function Home() {
         return;
       }
 
+      // Ctrl+C: copy node
+      if (key === "c" && e.ctrlKey && selectedId !== null) {
+        e.preventDefault();
+        const copied = copyNode(nodes, selectedId);
+        if (copied) clipboardRef.current = copied;
+        return;
+      }
+
+      // Ctrl+X: cut node
+      if (key === "x" && e.ctrlKey && selectedId !== null) {
+        e.preventDefault();
+        const copied = copyNode(nodes, selectedId);
+        if (copied) {
+          clipboardRef.current = copied;
+          const visible = flattenVisible(displayNodes);
+          const currentIndex = visible.findIndex((n) => n.id === selectedId);
+          const newNodes = deleteNode(nodes, selectedId);
+          update(newNodes);
+          const newVisible = flattenVisible(
+            searchQuery ? filterTree(newNodes, searchQuery) : newNodes
+          );
+          if (newVisible.length === 0) {
+            setSelectedId(null);
+          } else if (currentIndex < newVisible.length) {
+            setSelectedId(newVisible[currentIndex].id);
+          } else {
+            setSelectedId(newVisible[newVisible.length - 1].id);
+          }
+        }
+        return;
+      }
+
+      // Ctrl+V: paste node
+      if (key === "v" && e.ctrlKey && selectedId !== null && clipboardRef.current) {
+        e.preventDefault();
+        const newId = nextId(nodes);
+        const newNodes = pasteNode(nodes, selectedId, clipboardRef.current, newId);
+        update(newNodes);
+        setSelectedId(newId);
+        return;
+      }
+
+      // Ctrl+F: focus search
+      if (key === "f" && e.ctrlKey) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+
       // Don't handle other keys while editing (input handles its own keys)
       if (editingId !== null) return;
 
-      const visible = flattenVisible(nodes);
+      const visible = flattenVisible(displayNodes);
       if (visible.length === 0) return;
 
-      // Escape: deselect
+      // Escape: clear search first, then deselect
       if (e.key === "Escape") {
-        setSelectedId(null);
+        if (searchQuery) {
+          setSearchQuery("");
+        } else {
+          setSelectedId(null);
+        }
         return;
       }
 
@@ -294,7 +355,7 @@ export default function Home() {
         }
       }
     },
-    [nodes, selectedId, editingId, startEdit, update, undo, redo]
+    [nodes, selectedId, editingId, startEdit, update, undo, redo, searchQuery, displayNodes]
   );
 
   useEffect(() => {
@@ -331,26 +392,43 @@ export default function Home() {
       <div className="mx-auto max-w-3xl py-4">
         <div className="flex items-center justify-between px-4 pb-3">
           <h1 className="text-lg font-semibold">Locus</h1>
-          {saveStatus !== "idle" && (
-            <span
-              className={`text-xs ${
-                saveStatus === "saving"
-                  ? "text-zinc-400"
+          <div className="flex items-center gap-3">
+            {saveStatus !== "idle" && (
+              <span
+                className={`text-xs ${
+                  saveStatus === "saving"
+                    ? "text-zinc-400"
+                    : saveStatus === "saved"
+                      ? "text-green-500"
+                      : "text-red-500"
+                }`}
+              >
+                {saveStatus === "saving"
+                  ? "保存中..."
                   : saveStatus === "saved"
-                    ? "text-green-500"
-                    : "text-red-500"
-              }`}
-            >
-              {saveStatus === "saving"
-                ? "保存中..."
-                : saveStatus === "saved"
-                  ? "保存済み"
-                  : "保存失敗"}
-            </span>
-          )}
+                    ? "保存済み"
+                    : "保存失敗"}
+              </span>
+            )}
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="検索 (Ctrl+F)"
+              className="w-48 rounded border border-zinc-300 bg-transparent px-2 py-1 text-xs outline-none focus:border-blue-400 dark:border-zinc-700"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setSearchQuery("");
+                  searchInputRef.current?.blur();
+                  e.stopPropagation();
+                }
+              }}
+            />
+          </div>
         </div>
         <div className="text-sm font-mono">
-          {nodes.map((node) => (
+          {displayNodes.map((node) => (
             <TreeNode
               key={node.id}
               node={node}

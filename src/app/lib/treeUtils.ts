@@ -269,3 +269,81 @@ export function moveNodeDown(
   ctx.siblings[ctx.index + 1] = temp;
   return tree;
 }
+
+/** Filter tree: return only nodes matching query and their ancestors */
+export function filterTree(
+  nodes: TreeNodeData[],
+  query: string
+): TreeNodeData[] {
+  if (!query) return nodes;
+
+  const lowerQuery = query.toLowerCase();
+
+  function filter(list: TreeNodeData[]): TreeNodeData[] {
+    const result: TreeNodeData[] = [];
+    for (const node of list) {
+      const filteredChildren = filter(node.children);
+      const selfMatches = node.text.toLowerCase().includes(lowerQuery);
+
+      if (selfMatches || filteredChildren.length > 0) {
+        result.push({
+          ...node,
+          closed: false,
+          children: filteredChildren,
+        });
+      }
+    }
+    return result;
+  }
+
+  return filter(nodes);
+}
+
+/** Copy a node (deep clone) by id. Returns null if not found. */
+export function copyNode(
+  nodes: TreeNodeData[],
+  id: number
+): TreeNodeData | null {
+  const node = findNode(nodes, id);
+  if (!node) return null;
+  return cloneTree([node])[0];
+}
+
+/** Reassign IDs to a node and all its descendants */
+function reassignIds(node: TreeNodeData, startId: number): number {
+  node.id = startId;
+  let nextIdVal = startId + 1;
+  for (const child of node.children) {
+    nextIdVal = reassignIds(child, nextIdVal);
+  }
+  return nextIdVal;
+}
+
+/** Paste a copied node as a sibling after the target node */
+export function pasteNode(
+  nodes: TreeNodeData[],
+  targetId: number,
+  copied: TreeNodeData,
+  startId: number
+): TreeNodeData[] {
+  const tree = cloneTree(nodes);
+  const ctx = findParentContext(tree, targetId);
+  if (!ctx) return tree;
+
+  const clone = cloneTree([copied])[0];
+  // Adjust indent to match target
+  const target = ctx.siblings[ctx.index];
+  const indentDelta = target.indent - clone.indent;
+  function adjustIndent(n: TreeNodeData, delta: number) {
+    n.indent += delta;
+    n.children.forEach((c) => adjustIndent(c, delta));
+  }
+  adjustIndent(clone, indentDelta);
+
+  // Assign new IDs
+  reassignIds(clone, startId);
+
+  // Insert after target
+  ctx.siblings.splice(ctx.index + 1, 0, clone);
+  return tree;
+}
