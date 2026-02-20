@@ -121,7 +121,7 @@ export default function TreeNode({
           isDragging
             ? "opacity-40"
             : isSelected
-              ? "bg-blue-600 text-white"
+              ? "bg-blue-100 dark:bg-blue-900/30"
               : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
         } ${dropPosition === "child" ? "ring-2 ring-blue-400" : ""}`}
         style={{ paddingLeft: `${(node.indent - 1) * 20 + 8}px` }}
@@ -153,7 +153,7 @@ export default function TreeNode({
         {hasChildren ? (
           <span
             className={`mr-1 mt-0.5 w-4 shrink-0 text-center text-xs ${
-              isSelected && !isDragging ? "text-blue-200" : "text-zinc-400"
+              "text-zinc-400"
             }`}
             onClick={(e) => {
               e.stopPropagation();
@@ -163,9 +163,7 @@ export default function TreeNode({
             {node.closed ? "▶" : "▼"}
           </span>
         ) : (
-          <span className={`mr-1 mt-0.5 w-4 shrink-0 text-center text-xs ${
-            isSelected && !isDragging ? "text-blue-200" : "text-zinc-300 dark:text-zinc-600"
-          }`}>•</span>
+          <span className={`mr-1 mt-0.5 w-4 shrink-0 text-center text-xs text-zinc-300 dark:text-zinc-600`}>•</span>
         )}
 
         {isEditing ? (
