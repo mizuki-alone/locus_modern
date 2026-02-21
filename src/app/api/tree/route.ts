@@ -8,6 +8,7 @@ export interface TreeNode {
   indent: number;
   closed: boolean;
   children: TreeNode[];
+  ol?: boolean;
 }
 
 function decode(text: string): string {
@@ -17,7 +18,7 @@ function decode(text: string): string {
 function parseMemo(content: string): TreeNode[] {
   const lines = content.split("\n").filter((line) => line !== "");
 
-  const nodes: { id: number; text: string; indent: number; closed: boolean }[] =
+  const nodes: { id: number; text: string; indent: number; closed: boolean; ol: boolean }[] =
     [];
   let idCounter = 0;
 
@@ -33,12 +34,21 @@ function parseMemo(content: string): TreeNode[] {
       continue;
     }
 
+    if (trimmed === "!{ol}") {
+      // Mark the previous node as ordered list
+      if (nodes.length > 0) {
+        nodes[nodes.length - 1].ol = true;
+      }
+      continue;
+    }
+
     const indent = line.length - trimmed.length;
     nodes.push({
       id: idCounter++,
       text: decode(trimmed),
       indent,
       closed: false,
+      ol: false,
     });
   }
 
@@ -64,13 +74,15 @@ function parseMemo(content: string): TreeNode[] {
           i + 1,
           node.indent
         );
-        children.push({
+        const treeNode: TreeNode = {
           id: node.id,
           text: node.text,
           indent: node.indent,
           closed: node.closed,
           children: subChildren,
-        });
+        };
+        if (node.ol) treeNode.ol = true;
+        children.push(treeNode);
         i = nextIndex;
       } else {
         // Deeper than expected — belongs to previous sibling's subtree
@@ -120,6 +132,9 @@ function serializeTree(nodes: TreeNode[], indent: number): string {
     result += prefix + encode(node.text) + "\n";
     if (node.closed) {
       result += prefix + " !{close}\n";
+    }
+    if (node.ol) {
+      result += prefix + " !{ol}\n";
     }
     if (node.children.length > 0) {
       result += serializeTree(node.children, indent + 1);

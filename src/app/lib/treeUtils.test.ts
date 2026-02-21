@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { filterTree, copyNode, pasteNode, findNode, nextId, moveNode } from "./treeUtils";
+import {
+  filterTree, copyNode, pasteNode, findNode, nextId, moveNode,
+  addSiblingBefore, addChildNodeFirst, treeToText, textToTree, treeToMarkdown, toggleOl,
+} from "./treeUtils";
 import { TreeNodeData } from "../components/TreeNode";
 
 // テスト用のツリー構造
@@ -200,6 +203,114 @@ describe("moveNode（ドラッグ＆ドロップ移動）", () => {
     expect(result).not.toBeNull();
     const design = findNode(result!, 2)!; // デザイン
     expect(design.children.map((c) => c.text)).toEqual(["配色ルール", "買い物リスト"]);
+  });
+});
+
+describe("addSiblingBefore（前に兄弟追加）", () => {
+  it("選択ノードの前に空ノードが挿入される", () => {
+    const result = addSiblingBefore(testTree, 4, 100);
+    expect(result).not.toBeNull();
+    const parent = findNode(result!.tree, 1)!;
+    expect(parent.children.map((c) => c.text)).toEqual(["デザイン", "", "コーディング"]);
+    expect(parent.children[1].id).toBe(100);
+  });
+
+  it("先頭ノードの前にも挿入できる", () => {
+    const result = addSiblingBefore(testTree, 1, 100);
+    expect(result).not.toBeNull();
+    expect(result!.tree[0].id).toBe(100);
+    expect(result!.tree[1].text).toBe("覚書");
+  });
+});
+
+describe("addChildNodeFirst（先頭に子追加）", () => {
+  it("親の子リストの先頭に追加される", () => {
+    const { tree } = addChildNodeFirst(testTree, 1, 100);
+    const parent = findNode(tree, 1)!;
+    expect(parent.children[0].id).toBe(100);
+    expect(parent.children[1].text).toBe("デザイン");
+  });
+
+  it("閉じていた親は展開される", () => {
+    const closedTree: TreeNodeData[] = [
+      { id: 1, text: "親", indent: 1, closed: true, children: [
+        { id: 2, text: "子", indent: 2, closed: false, children: [] },
+      ] },
+    ];
+    const { tree } = addChildNodeFirst(closedTree, 1, 100);
+    const parent = findNode(tree, 1)!;
+    expect(parent.closed).toBe(false);
+    expect(parent.children[0].id).toBe(100);
+  });
+});
+
+describe("treeToText / textToTree（エクスポート・インポート）", () => {
+  it("treeToText がインデント付きテキストを生成する", () => {
+    const text = treeToText(testTree);
+    expect(text).toContain("覚書\n");
+    expect(text).toContain("  デザイン\n");
+    expect(text).toContain("    配色ルール\n");
+  });
+
+  it("textToTree がインデント付きテキストからツリーを生成する", () => {
+    const input = "A\n  B\n  C\n    D\nE\n";
+    const { nodes } = textToTree(input, 1);
+    expect(nodes.length).toBe(2);
+    expect(nodes[0].text).toBe("A");
+    expect(nodes[0].children.length).toBe(2);
+    expect(nodes[0].children[0].text).toBe("B");
+    expect(nodes[0].children[1].text).toBe("C");
+    expect(nodes[0].children[1].children[0].text).toBe("D");
+    expect(nodes[1].text).toBe("E");
+  });
+
+  it("往復変換でテキストが保持される", () => {
+    const text = treeToText(testTree);
+    const { nodes } = textToTree(text, 100);
+    const roundTrip = treeToText(nodes);
+    expect(roundTrip).toBe(text);
+  });
+});
+
+describe("treeToMarkdown（Markdown展開）", () => {
+  it("ルートノードが見出しになる", () => {
+    const md = treeToMarkdown(testTree[0]);
+    expect(md).toMatch(/^# 覚書\n/);
+  });
+
+  it("子ノードがリスト項目になる", () => {
+    const md = treeToMarkdown(testTree[0]);
+    expect(md).toContain("- デザイン\n");
+    expect(md).toContain("  - 配色ルール\n");
+  });
+
+  it("OLフラグがある親の子は順序付きリストになる", () => {
+    const olTree: TreeNodeData = {
+      id: 1, text: "手順", indent: 1, closed: false, ol: true, children: [
+        { id: 2, text: "準備", indent: 2, closed: false, children: [] },
+        { id: 3, text: "実行", indent: 2, closed: false, children: [] },
+        { id: 4, text: "確認", indent: 2, closed: false, children: [] },
+      ],
+    };
+    const md = treeToMarkdown(olTree);
+    expect(md).toContain("1. 準備\n");
+    expect(md).toContain("2. 実行\n");
+    expect(md).toContain("3. 確認\n");
+  });
+});
+
+describe("toggleOl（OLフラグ切替）", () => {
+  it("OLフラグがtrueに設定される", () => {
+    const result = toggleOl(testTree, 1);
+    const node = findNode(result, 1)!;
+    expect(node.ol).toBe(true);
+  });
+
+  it("OLフラグが二回トグルで元に戻る", () => {
+    const first = toggleOl(testTree, 1);
+    const second = toggleOl(first, 1);
+    const node = findNode(second, 1)!;
+    expect(node.ol).toBe(false);
   });
 });
 

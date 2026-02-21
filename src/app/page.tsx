@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import TreeNode, { TreeNodeData } from "./components/TreeNode";
 import {
   flattenVisible,
@@ -10,7 +10,9 @@ import {
   setNodeClosed,
   updateNodeText,
   addSiblingNode,
+  addSiblingBefore,
   addChildNode,
+  addChildNodeFirst,
   deleteNode,
   indentNode,
   outdentNode,
@@ -21,9 +23,14 @@ import {
   copyNode,
   pasteNode,
   moveNode,
+  treeToText,
+  textToTree,
+  treeToMarkdown,
+  toggleOl,
 } from "./lib/treeUtils";
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
+type ModalType = "import" | "export" | "markdown" | null;
 
 export default function Home() {
   const [nodes, setNodes] = useState<TreeNodeData[]>([]);
@@ -39,6 +46,10 @@ export default function Home() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const clipboardRef = useRef<TreeNodeData | null>(null);
   const [dragId, setDragId] = useState<number | null>(null);
+  const [modal, setModal] = useState<ModalType>(null);
+  const [modalText, setModalText] = useState("");
+  const [backups, setBackups] = useState<{ name: string; mtime: string }[]>([]);
+  const [showBackups, setShowBackups] = useState(false);
 
   const saveTree = useCallback((data: TreeNodeData[]) => {
     setSaveStatus("saving");
@@ -141,8 +152,26 @@ export default function Home() {
 
   const displayNodes = searchQuery ? filterTree(nodes, searchQuery) : nodes;
 
+  // Count search hits
+  const searchHitCount = useMemo(() => {
+    if (!searchQuery) return 0;
+    const lowerQuery = searchQuery.toLowerCase();
+    let count = 0;
+    function walk(list: TreeNodeData[]) {
+      for (const node of list) {
+        if (node.text.toLowerCase().includes(lowerQuery)) count++;
+        walk(node.children);
+      }
+    }
+    walk(nodes);
+    return count;
+  }, [nodes, searchQuery]);
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
+      // Don't handle keys when modal is open
+      if (modal) return;
+
       // Undo/Redo works even during editing
       const key = e.key.toLowerCase();
       if (key === "z" && e.ctrlKey && !e.shiftKey) {
@@ -221,10 +250,38 @@ export default function Home() {
         return;
       }
 
-      // F2: edit selected node
-      if (e.key === "F2" && selectedId !== null) {
+      // F2 or Space: edit selected node
+      if ((e.key === "F2" || e.key === " ") && selectedId !== null) {
         e.preventDefault();
         startEdit(selectedId);
+        return;
+      }
+
+      // Home: select first visible node
+      if (e.key === "Home" && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        setSelectedId(visible[0].id);
+        return;
+      }
+
+      // End: select last visible node
+      if (e.key === "End" && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        setSelectedId(visible[visible.length - 1].id);
+        return;
+      }
+
+      // Shift+Enter: add sibling before
+      if (e.key === "Enter" && e.shiftKey && selectedId !== null) {
+        e.preventDefault();
+        const newId = nextId(nodes);
+        const result = addSiblingBefore(nodes, selectedId, newId);
+        if (result) {
+          update(result.tree);
+          setSelectedId(newId);
+          setEditingId(newId);
+          setEditText("");
+        }
         return;
       }
 
@@ -239,6 +296,18 @@ export default function Home() {
           setEditingId(newId);
           setEditText("");
         }
+        return;
+      }
+
+      // Shift+Tab: add child node at beginning
+      if (e.key === "Tab" && e.shiftKey && selectedId !== null) {
+        e.preventDefault();
+        const newId = nextId(nodes);
+        const { tree } = addChildNodeFirst(nodes, selectedId, newId);
+        update(tree);
+        setSelectedId(newId);
+        setEditingId(newId);
+        setEditText("");
         return;
       }
 
@@ -273,7 +342,15 @@ export default function Home() {
         return;
       }
 
-      // Alt+↑: move node up among siblings
+      // Ctrl+Shift+L: toggle OL
+      if (key === "l" && e.ctrlKey && e.shiftKey && selectedId !== null) {
+        e.preventDefault();
+        const newNodes = toggleOl(nodes, selectedId);
+        update(newNodes);
+        return;
+      }
+
+      // Alt+Arrow: move node up among siblings
       if (e.key === "ArrowUp" && e.altKey && selectedId !== null) {
         e.preventDefault();
         const result = moveNodeUp(nodes, selectedId);
@@ -281,7 +358,7 @@ export default function Home() {
         return;
       }
 
-      // Alt+↓: move node down among siblings
+      // Alt+Arrow: move node down among siblings
       if (e.key === "ArrowDown" && e.altKey && selectedId !== null) {
         e.preventDefault();
         const result = moveNodeDown(nodes, selectedId);
@@ -289,7 +366,7 @@ export default function Home() {
         return;
       }
 
-      // Alt+→: indent
+      // Alt+Arrow: indent
       if (e.key === "ArrowRight" && e.altKey && selectedId !== null) {
         e.preventDefault();
         const result = indentNode(nodes, selectedId);
@@ -297,7 +374,7 @@ export default function Home() {
         return;
       }
 
-      // Alt+←: outdent
+      // Alt+Arrow: outdent
       if (e.key === "ArrowLeft" && e.altKey && selectedId !== null) {
         e.preventDefault();
         const result = outdentNode(nodes, selectedId);
@@ -305,7 +382,7 @@ export default function Home() {
         return;
       }
 
-      // →: expand or move to first child
+      // Arrow Right: expand or move to first child
       if (e.key === "ArrowRight" && selectedId !== null) {
         e.preventDefault();
         const node = findNode(nodes, selectedId);
@@ -319,7 +396,7 @@ export default function Home() {
         return;
       }
 
-      // ←: collapse or move to parent
+      // Arrow Left: collapse or move to parent
       if (e.key === "ArrowLeft" && selectedId !== null) {
         e.preventDefault();
         const node = findNode(nodes, selectedId);
@@ -335,7 +412,7 @@ export default function Home() {
         return;
       }
 
-      // ↑/↓: move selection
+      // Arrow Up/Down: move selection
       if (e.key === "ArrowUp" || e.key === "ArrowDown") {
         e.preventDefault();
 
@@ -357,7 +434,7 @@ export default function Home() {
         }
       }
     },
-    [nodes, selectedId, editingId, startEdit, update, undo, redo, searchQuery, displayNodes]
+    [nodes, selectedId, editingId, startEdit, update, undo, redo, searchQuery, displayNodes, modal]
   );
 
   useEffect(() => {
@@ -397,6 +474,77 @@ export default function Home() {
     setDragId(null);
   }, []);
 
+  // Export handler
+  const handleExport = useCallback(() => {
+    const text = treeToText(nodes);
+    setModalText(text);
+    setModal("export");
+  }, [nodes]);
+
+  // Markdown export handler
+  const handleMarkdown = useCallback(() => {
+    if (selectedId === null) return;
+    const node = findNode(nodes, selectedId);
+    if (!node) return;
+    const md = treeToMarkdown(node);
+    setModalText(md);
+    setModal("markdown");
+  }, [nodes, selectedId]);
+
+  // Import handler
+  const handleImport = useCallback(() => {
+    setModalText("");
+    setModal("import");
+  }, []);
+
+  const handleImportConfirm = useCallback(() => {
+    if (!modalText.trim()) {
+      setModal(null);
+      return;
+    }
+    const startIdVal = nextId(nodes);
+    const { nodes: imported } = textToTree(modalText, startIdVal);
+    if (imported.length > 0) {
+      const newNodes = [...nodes, ...imported];
+      update(newNodes);
+    }
+    setModal(null);
+    setModalText("");
+  }, [modalText, nodes, update]);
+
+  // Restore from backup
+  const handleLoadBackups = useCallback(() => {
+    fetch("/api/tree/restore")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.backups) {
+          setBackups(data.backups);
+          setShowBackups(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleRestore = useCallback(
+    (backupName: string) => {
+      if (!confirm("このバックアップから復元しますか？現在のデータは上書きされます。")) return;
+      fetch("/api/tree/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ backup: backupName }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.nodes) {
+            update(data.nodes);
+            setShowBackups(false);
+          }
+        })
+        .catch(() => {});
+    },
+    [update]
+  );
+
   if (error) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -428,23 +576,98 @@ export default function Home() {
                     : "保存失敗"}
               </span>
             )}
-            <input
-              ref={searchInputRef}
-              type="text"
-              placeholder="検索 (Ctrl+F)"
-              className="w-48 rounded border border-zinc-300 bg-transparent px-2 py-1 text-xs outline-none focus:border-blue-400 dark:border-zinc-700"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  setSearchQuery("");
-                  searchInputRef.current?.blur();
-                  e.stopPropagation();
-                }
-              }}
-            />
+            <div className="flex items-center gap-1">
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="検索 (Ctrl+F)"
+                className="w-48 rounded border border-zinc-300 bg-transparent px-2 py-1 text-xs outline-none focus:border-blue-400 dark:border-zinc-700"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setSearchQuery("");
+                    searchInputRef.current?.blur();
+                    e.stopPropagation();
+                  }
+                }}
+              />
+              {searchQuery && (
+                <span className="text-xs text-zinc-400 whitespace-nowrap">
+                  {searchHitCount}件
+                </span>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Toolbar */}
+        <div className="flex items-center gap-1 px-4 pb-2 text-xs">
+          <button
+            className="rounded border border-zinc-300 px-2 py-0.5 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+            onClick={handleImport}
+            title="インデント付きテキストからインポート"
+          >
+            Import
+          </button>
+          <button
+            className="rounded border border-zinc-300 px-2 py-0.5 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+            onClick={handleExport}
+            title="インデント付きテキストへエクスポート"
+          >
+            Export
+          </button>
+          <button
+            className="rounded border border-zinc-300 px-2 py-0.5 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800 disabled:opacity-40"
+            onClick={handleMarkdown}
+            disabled={selectedId === null}
+            title="選択ノードをMarkdownに展開"
+          >
+            MD
+          </button>
+          <button
+            className="rounded border border-zinc-300 px-2 py-0.5 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+            onClick={handleLoadBackups}
+            title="バックアップから復元"
+          >
+            戻す
+          </button>
+        </div>
+
+        {/* Backup list */}
+        {showBackups && (
+          <div className="mx-4 mb-2 rounded border border-zinc-300 bg-zinc-50 p-2 text-xs dark:border-zinc-700 dark:bg-zinc-900">
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-semibold">バックアップ一覧</span>
+              <button
+                className="text-zinc-400 hover:text-zinc-600"
+                onClick={() => setShowBackups(false)}
+              >
+                閉じる
+              </button>
+            </div>
+            {backups.length === 0 ? (
+              <p className="text-zinc-400">バックアップがありません</p>
+            ) : (
+              <ul className="space-y-0.5">
+                {backups.map((b, idx) => (
+                  <li key={b.name} className="flex items-center gap-2">
+                    <button
+                      className="text-blue-500 hover:underline"
+                      onClick={() => handleRestore(b.name)}
+                    >
+                      {idx === 0 ? "最新" : `${idx + 1}番目`}
+                    </button>
+                    <span className="text-zinc-400">
+                      {new Date(b.mtime).toLocaleString("ja-JP")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
         <div className="text-sm font-mono">
           {displayNodes.map((node) => (
             <TreeNode
@@ -454,8 +677,10 @@ export default function Home() {
               editingId={editingId}
               editText={editText}
               dragId={dragId}
+              searchQuery={searchQuery}
               onSelect={setSelectedId}
               onToggle={handleToggle}
+              onStartEdit={startEdit}
               onEditTextChange={setEditText}
               onEditConfirm={confirmEdit}
               onEditCancel={cancelEdit}
@@ -466,6 +691,53 @@ export default function Home() {
           ))}
         </div>
       </div>
+
+      {/* Modal */}
+      {modal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-[600px] max-h-[80vh] rounded-lg bg-white p-4 shadow-xl dark:bg-zinc-900">
+            <h2 className="mb-2 text-sm font-semibold">
+              {modal === "import" ? "Import" : modal === "export" ? "Export" : "Markdown"}
+            </h2>
+            <textarea
+              className="w-full h-64 rounded border border-zinc-300 bg-zinc-50 p-2 text-xs font-mono outline-none focus:border-blue-400 dark:border-zinc-700 dark:bg-zinc-800"
+              value={modalText}
+              onChange={(e) => setModalText(e.target.value)}
+              readOnly={modal !== "import"}
+              autoFocus
+            />
+            <div className="mt-2 flex justify-end gap-2">
+              {modal === "import" && (
+                <button
+                  className="rounded bg-blue-500 px-3 py-1 text-xs text-white hover:bg-blue-600"
+                  onClick={handleImportConfirm}
+                >
+                  インポート
+                </button>
+              )}
+              {(modal === "export" || modal === "markdown") && (
+                <button
+                  className="rounded bg-blue-500 px-3 py-1 text-xs text-white hover:bg-blue-600"
+                  onClick={() => {
+                    navigator.clipboard.writeText(modalText);
+                  }}
+                >
+                  コピー
+                </button>
+              )}
+              <button
+                className="rounded border border-zinc-300 px-3 py-1 text-xs hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                onClick={() => {
+                  setModal(null);
+                  setModalText("");
+                }}
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

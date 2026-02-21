@@ -2,10 +2,17 @@ import { TreeNodeData } from "../components/TreeNode";
 
 /** Deep clone the tree */
 export function cloneTree(nodes: TreeNodeData[]): TreeNodeData[] {
-  return nodes.map((n) => ({
-    ...n,
-    children: cloneTree(n.children),
-  }));
+  return nodes.map((n) => {
+    const clone: TreeNodeData = {
+      id: n.id,
+      text: n.text,
+      indent: n.indent,
+      closed: n.closed,
+      children: cloneTree(n.children),
+    };
+    if (n.ol) clone.ol = true;
+    return clone;
+  });
 }
 
 /** Find a node by id, returning the node and its parent's children array */
@@ -364,6 +371,158 @@ function isAncestor(
     return false;
   }
   return search(ancestor.children);
+}
+
+/** Add a sibling node before the given node */
+export function addSiblingBefore(
+  nodes: TreeNodeData[],
+  siblingId: number,
+  newId: number
+): { tree: TreeNodeData[]; newNode: TreeNodeData } | null {
+  const tree = cloneTree(nodes);
+  const ctx = findParentContext(tree, siblingId);
+  if (!ctx) return null;
+
+  const sibling = ctx.siblings[ctx.index];
+  const newNode: TreeNodeData = {
+    id: newId,
+    text: "",
+    indent: sibling.indent,
+    closed: false,
+    children: [],
+  };
+  ctx.siblings.splice(ctx.index, 0, newNode);
+  return { tree, newNode };
+}
+
+/** Add a child node at the beginning of the parent's children */
+export function addChildNodeFirst(
+  nodes: TreeNodeData[],
+  parentId: number,
+  newId: number
+): { tree: TreeNodeData[]; newNode: TreeNodeData } {
+  const tree = cloneTree(nodes);
+  const parent = findNode(tree, parentId);
+  const newNode: TreeNodeData = {
+    id: newId,
+    text: "",
+    indent: parent ? parent.indent + 1 : 1,
+    closed: false,
+    children: [],
+  };
+  if (parent) {
+    parent.closed = false;
+    parent.children.unshift(newNode);
+  }
+  return { tree, newNode };
+}
+
+/** Convert tree to indented text */
+export function treeToText(nodes: TreeNodeData[], depth: number = 0): string {
+  let result = "";
+  for (const node of nodes) {
+    const prefix = "  ".repeat(depth);
+    result += prefix + node.text + "\n";
+    if (node.children.length > 0) {
+      result += treeToText(node.children, depth + 1);
+    }
+  }
+  return result;
+}
+
+/** Parse indented text into tree nodes */
+export function textToTree(
+  text: string,
+  startId: number
+): { nodes: TreeNodeData[]; nextId: number } {
+  const lines = text.split("\n").filter((line) => line.trim() !== "");
+  if (lines.length === 0) return { nodes: [], nextId: startId };
+
+  const flatNodes: { text: string; depth: number }[] = [];
+  for (const line of lines) {
+    const trimmed = line.replace(/^\t+/, (m) => "  ".repeat(m.length));
+    const match = trimmed.match(/^(\s*)/);
+    const spaces = match ? match[1].length : 0;
+    const depth = Math.floor(spaces / 2);
+    flatNodes.push({ text: trimmed.trim(), depth });
+  }
+
+  let idCounter = startId;
+
+  function buildLevel(
+    items: typeof flatNodes,
+    startIdx: number,
+    parentDepth: number,
+    indent: number
+  ): { nodes: TreeNodeData[]; nextIdx: number } {
+    const result: TreeNodeData[] = [];
+    let i = startIdx;
+
+    while (i < items.length) {
+      if (items[i].depth <= parentDepth && i > startIdx) break;
+      if (items[i].depth < parentDepth) break;
+
+      const node: TreeNodeData = {
+        id: idCounter++,
+        text: items[i].text,
+        indent,
+        closed: false,
+        children: [],
+      };
+
+      // Collect children (items with greater depth)
+      const childStart = i + 1;
+      if (childStart < items.length && items[childStart].depth > items[i].depth) {
+        const childResult = buildLevel(items, childStart, items[i].depth, indent + 1);
+        node.children = childResult.nodes;
+        i = childResult.nextIdx;
+      } else {
+        i++;
+      }
+      result.push(node);
+    }
+
+    return { nodes: result, nextIdx: i };
+  }
+
+  const minDepth = Math.min(...flatNodes.map((n) => n.depth));
+  const { nodes } = buildLevel(flatNodes, 0, minDepth - 1, 1);
+  return { nodes, nextId: idCounter };
+}
+
+/** Convert a subtree to Markdown */
+export function treeToMarkdown(
+  node: TreeNodeData,
+  depth: number = 0,
+  parentOl: boolean = false,
+  siblingIndex: number = 0
+): string {
+  const indent = depth > 0 ? "  ".repeat(depth - 1) : "";
+  const bullet = parentOl ? `${siblingIndex + 1}. ` : "- ";
+  const heading = "#".repeat(Math.min(depth + 1, 6));
+
+  let result = depth === 0
+    ? `${heading} ${node.text}\n\n`
+    : `${indent}${bullet}${node.text}\n`;
+
+  if (node.children.length > 0) {
+    node.children.forEach((child, idx) => {
+      result += treeToMarkdown(child, depth + 1, !!node.ol, idx);
+    });
+  }
+
+  return result;
+}
+
+/** Toggle OL (ordered list) flag on a node */
+export function toggleOl(
+  nodes: TreeNodeData[],
+  id: number
+): TreeNodeData[] {
+  const tree = cloneTree(nodes);
+  const node = findNode(tree, id);
+  if (node) node.ol = !node.ol;
+  return tree;
 }
 
 /** Move a node to a new position. mode: "after" = sibling after target, "child" = child of target.

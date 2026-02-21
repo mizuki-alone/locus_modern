@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState, useCallback } from "react";
+import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 
 export interface TreeNodeData {
   id: number;
@@ -8,6 +8,7 @@ export interface TreeNodeData {
   indent: number;
   closed: boolean;
   children: TreeNodeData[];
+  ol?: boolean;
 }
 
 type DropPosition = "before" | "after" | "child" | null;
@@ -18,8 +19,12 @@ interface TreeNodeProps {
   editingId: number | null;
   editText: string;
   dragId: number | null;
+  searchQuery?: string;
+  siblingIndex?: number;
+  parentOl?: boolean;
   onSelect: (id: number) => void;
   onToggle: (id: number) => void;
+  onStartEdit: (id: number) => void;
   onEditTextChange: (text: string) => void;
   onEditConfirm: () => void;
   onEditCancel: () => void;
@@ -28,14 +33,58 @@ interface TreeNodeProps {
   onDragEnd: () => void;
 }
 
+/** Highlight search query matches in text */
+function HighlightedText({ text, query }: { text: string; query: string }) {
+  if (!query) return <>{text}</>;
+
+  const lowerText = text.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  const parts: { text: string; highlight: boolean }[] = [];
+  let lastIndex = 0;
+
+  let pos = lowerText.indexOf(lowerQuery, lastIndex);
+  while (pos !== -1) {
+    if (pos > lastIndex) {
+      parts.push({ text: text.slice(lastIndex, pos), highlight: false });
+    }
+    parts.push({ text: text.slice(pos, pos + query.length), highlight: true });
+    lastIndex = pos + query.length;
+    pos = lowerText.indexOf(lowerQuery, lastIndex);
+  }
+
+  if (lastIndex < text.length) {
+    parts.push({ text: text.slice(lastIndex), highlight: false });
+  }
+
+  if (parts.length === 0) return <>{text}</>;
+
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.highlight ? (
+          <mark key={i} className="bg-yellow-200 dark:bg-yellow-700 rounded-sm px-0.5">
+            {part.text}
+          </mark>
+        ) : (
+          <span key={i}>{part.text}</span>
+        )
+      )}
+    </>
+  );
+}
+
 export default function TreeNode({
   node,
   selectedId,
   editingId,
   editText,
   dragId,
+  searchQuery,
+  siblingIndex,
+  parentOl,
   onSelect,
   onToggle,
+  onStartEdit,
   onEditTextChange,
   onEditConfirm,
   onEditCancel,
@@ -113,6 +162,14 @@ export default function TreeNode({
     setDropPosition(null);
   }, []);
 
+  // Determine the bullet/number for this node
+  const bullet = useMemo(() => {
+    if (parentOl && siblingIndex !== undefined) {
+      return `${siblingIndex + 1}.`;
+    }
+    return null;
+  }, [parentOl, siblingIndex]);
+
   return (
     <div>
       <div
@@ -126,6 +183,7 @@ export default function TreeNode({
         } ${dropPosition === "child" ? "ring-2 ring-blue-400" : ""}`}
         style={{ paddingLeft: `${(node.indent - 1) * 20 + 8}px` }}
         onClick={() => onSelect(node.id)}
+        onDoubleClick={() => onStartEdit(node.id)}
         data-node-id={node.id}
         draggable={!isEditing}
         onDragStart={(e) => {
@@ -150,20 +208,22 @@ export default function TreeNode({
           />
         )}
 
-        {hasChildren ? (
+        {bullet ? (
+          <span className="mr-1 mt-0.5 w-5 shrink-0 text-right text-xs text-zinc-400 tabular-nums">
+            {bullet}
+          </span>
+        ) : hasChildren ? (
           <span
-            className={`mr-1 mt-0.5 w-4 shrink-0 text-center text-xs ${
-              "text-zinc-400"
-            }`}
+            className="mr-1 mt-0.5 w-4 shrink-0 text-center text-xs text-zinc-400"
             onClick={(e) => {
               e.stopPropagation();
               onToggle(node.id);
             }}
           >
-            {node.closed ? "▶" : "▼"}
+            {node.closed ? "\u25B6" : "\u25BC"}
           </span>
         ) : (
-          <span className={`mr-1 mt-0.5 w-4 shrink-0 text-center text-xs text-zinc-300 dark:text-zinc-600`}>•</span>
+          <span className="mr-1 mt-0.5 w-4 shrink-0 text-center text-xs text-zinc-300 dark:text-zinc-600">{"\u2022"}</span>
         )}
 
         {isEditing ? (
@@ -190,13 +250,17 @@ export default function TreeNode({
           />
         ) : (
           <span className={hasMultiline ? "whitespace-pre-wrap" : "truncate"}>
-            {node.text || "(empty)"}
+            {node.text ? (
+              <HighlightedText text={node.text} query={searchQuery || ""} />
+            ) : (
+              "(empty)"
+            )}
           </span>
         )}
       </div>
 
       {!node.closed &&
-        node.children.map((child) => (
+        node.children.map((child, idx) => (
           <TreeNode
             key={child.id}
             node={child}
@@ -204,8 +268,12 @@ export default function TreeNode({
             editingId={editingId}
             editText={editText}
             dragId={dragId}
+            searchQuery={searchQuery}
+            siblingIndex={idx}
+            parentOl={node.ol}
             onSelect={onSelect}
             onToggle={onToggle}
+            onStartEdit={onStartEdit}
             onEditTextChange={onEditTextChange}
             onEditConfirm={onEditConfirm}
             onEditCancel={onEditCancel}
