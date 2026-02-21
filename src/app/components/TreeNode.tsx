@@ -181,7 +181,7 @@ export default function TreeNode({
               ? "bg-blue-100 dark:bg-blue-900/30"
               : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
         } ${dropPosition === "child" ? "ring-2 ring-blue-400" : ""}`}
-        style={{ paddingLeft: `${node.indent * 12 + 4}px` }}
+        style={{ paddingLeft: `${node.indent * 12 + 16}px` }}
         onClick={() => onSelect(node.id)}
         onDoubleClick={() => onStartEdit(node.id)}
         data-node-id={node.id}
@@ -198,13 +198,13 @@ export default function TreeNode({
         {dropPosition === "before" && (
           <div
             className="absolute right-0 top-0 h-0.5 bg-blue-500 -translate-y-1/2"
-            style={{ left: `${dropIndent * 12 + 4}px` }}
+            style={{ left: `${dropIndent * 12 + 16}px` }}
           />
         )}
         {dropPosition === "after" && (
           <div
             className="absolute right-0 bottom-0 h-0.5 bg-blue-500 translate-y-1/2"
-            style={{ left: `${dropIndent * 12 + 4}px` }}
+            style={{ left: `${dropIndent * 12 + 16}px` }}
           />
         )}
 
