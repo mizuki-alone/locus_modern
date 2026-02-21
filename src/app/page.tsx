@@ -689,6 +689,7 @@ export default function Home() {
               onDragEnd={handleDragEnd}
             />
           ))}
+          <div style={{ height: "80vh" }} />
         </div>
       </div>
 

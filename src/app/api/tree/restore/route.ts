@@ -19,7 +19,7 @@ interface TreeNode {
 }
 
 function parseMemo(content: string): TreeNode[] {
-  const lines = content.split("\n").filter((line) => line !== "");
+  const lines = content.replace(/\r/g, "").split("\n").filter((line) => line !== "");
   const nodes: { id: number; text: string; indent: number; closed: boolean; ol: boolean }[] = [];
   let idCounter = 0;
 
