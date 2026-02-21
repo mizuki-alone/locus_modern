@@ -71,17 +71,28 @@ function parseMemo(content: string): TreeNode[] {
     return { children, nextIndex: i };
   }
 
-  const rootNode = nodes[0];
-  const { children } = buildTree(nodes, 1, rootNode.indent);
-  const root: TreeNode = {
-    id: rootNode.id,
-    text: rootNode.text,
-    indent: rootNode.indent,
-    closed: rootNode.closed,
-    children,
-  };
-  if (rootNode.ol) root.ol = true;
-  return [root];
+  const minIndent = Math.min(...nodes.map((n) => n.indent));
+  const result: TreeNode[] = [];
+  let i = 0;
+  while (i < nodes.length) {
+    const node = nodes[i];
+    if (node.indent === minIndent) {
+      const { children, nextIndex } = buildTree(nodes, i + 1, node.indent);
+      const treeNode: TreeNode = {
+        id: node.id,
+        text: node.text,
+        indent: node.indent,
+        closed: node.closed,
+        children,
+      };
+      if (node.ol) treeNode.ol = true;
+      result.push(treeNode);
+      i = nextIndex;
+    } else {
+      i++;
+    }
+  }
+  return result;
 }
 
 /** GET: list available backups with modification times */
