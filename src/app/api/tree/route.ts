@@ -93,14 +93,22 @@ function parseMemo(content: string): TreeNode[] {
     return { children, nextIndex: i };
   }
 
-  // Root node is the first node at indent 0; skip it and build from its children
   if (nodes.length === 0) {
     return [];
   }
 
-  const rootIndent = nodes[0].indent;
-  const { children } = buildTree(nodes, 1, rootIndent);
-  return children;
+  // Build full tree including root
+  const rootNode = nodes[0];
+  const { children } = buildTree(nodes, 1, rootNode.indent);
+  const root: TreeNode = {
+    id: rootNode.id,
+    text: rootNode.text,
+    indent: rootNode.indent,
+    closed: rootNode.closed,
+    children,
+  };
+  if (rootNode.ol) root.ol = true;
+  return [root];
 }
 
 const MEMO_PATH = path.join(process.cwd(), "src", "app", "api", "tree", "memo.cgi");
@@ -172,7 +180,7 @@ function rotateBackups() {
 export async function PUT(request: Request) {
   try {
     const { nodes } = (await request.json()) as { nodes: TreeNode[] };
-    const content = "root\n" + serializeTree(nodes, 1);
+    const content = serializeTree(nodes, 0);
     rotateBackups();
     fs.writeFileSync(MEMO_PATH, content, "utf-8");
     return NextResponse.json({ ok: true });

@@ -71,9 +71,17 @@ function parseMemo(content: string): TreeNode[] {
     return { children, nextIndex: i };
   }
 
-  const rootIndent = nodes[0].indent;
-  const { children } = buildTree(nodes, 1, rootIndent);
-  return children;
+  const rootNode = nodes[0];
+  const { children } = buildTree(nodes, 1, rootNode.indent);
+  const root: TreeNode = {
+    id: rootNode.id,
+    text: rootNode.text,
+    indent: rootNode.indent,
+    closed: rootNode.closed,
+    children,
+  };
+  if (rootNode.ol) root.ol = true;
+  return [root];
 }
 
 /** GET: list available backups with modification times */

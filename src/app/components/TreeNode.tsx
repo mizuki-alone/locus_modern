@@ -132,8 +132,8 @@ export default function TreeNode({
       } else if (ratio > 0.75) {
         // After zone: X position determines indent level
         const relativeX = e.clientX - rect.left;
-        const rawIndent = Math.max(1, Math.ceil(relativeX / 20));
-        setDropIndent(Math.max(1, Math.min(rawIndent, node.indent)));
+        const rawIndent = Math.max(0, Math.ceil(relativeX / 20));
+        setDropIndent(Math.max(0, Math.min(rawIndent, node.indent)));
         setDropPosition("after");
       } else {
         setDropPosition("child");
@@ -181,7 +181,7 @@ export default function TreeNode({
               ? "bg-blue-100 dark:bg-blue-900/30"
               : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
         } ${dropPosition === "child" ? "ring-2 ring-blue-400" : ""}`}
-        style={{ paddingLeft: `${(node.indent - 1) * 20 + 8}px` }}
+        style={{ paddingLeft: `${node.indent * 20 + 8}px` }}
         onClick={() => onSelect(node.id)}
         onDoubleClick={() => onStartEdit(node.id)}
         data-node-id={node.id}
@@ -198,13 +198,13 @@ export default function TreeNode({
         {dropPosition === "before" && (
           <div
             className="absolute right-0 top-0 h-0.5 bg-blue-500 -translate-y-1/2"
-            style={{ left: `${(dropIndent - 1) * 20 + 8}px` }}
+            style={{ left: `${dropIndent * 20 + 8}px` }}
           />
         )}
         {dropPosition === "after" && (
           <div
             className="absolute right-0 bottom-0 h-0.5 bg-blue-500 translate-y-1/2"
-            style={{ left: `${(dropIndent - 1) * 20 + 8}px` }}
+            style={{ left: `${dropIndent * 20 + 8}px` }}
           />
         )}
 
