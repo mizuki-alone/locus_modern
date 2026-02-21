@@ -527,7 +527,7 @@ export default function Home() {
 
   const handleRestore = useCallback(
     (backupName: string) => {
-      if (!confirm("このバックアップから復元しますか？現在のデータは上書きされます。")) return;
+      if (!confirm("Restore from this backup? Current data will be overwritten.")) return;
       fetch("/api/tree/restore", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -570,17 +570,17 @@ export default function Home() {
                 }`}
               >
                 {saveStatus === "saving"
-                  ? "保存中..."
+                  ? "Saving..."
                   : saveStatus === "saved"
-                    ? "保存済み"
-                    : "保存失敗"}
+                    ? "Saved"
+                    : "Save failed"}
               </span>
             )}
             <div className="flex items-center gap-1">
               <input
                 ref={searchInputRef}
                 type="text"
-                placeholder="検索 (Ctrl+F)"
+                placeholder="Search (Ctrl+F)"
                 className="w-48 rounded border border-zinc-300 bg-transparent px-2 py-1 text-xs outline-none focus:border-blue-400 dark:border-zinc-700"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -594,7 +594,7 @@ export default function Home() {
               />
               {searchQuery && (
                 <span className="text-xs text-zinc-400 whitespace-nowrap">
-                  {searchHitCount}件
+                  {searchHitCount} found
                 </span>
               )}
             </div>
@@ -606,14 +606,14 @@ export default function Home() {
           <button
             className="rounded border border-zinc-300 px-2 py-0.5 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
             onClick={handleImport}
-            title="インデント付きテキストからインポート"
+            title="Import from indented text"
           >
             Import
           </button>
           <button
             className="rounded border border-zinc-300 px-2 py-0.5 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
             onClick={handleExport}
-            title="インデント付きテキストへエクスポート"
+            title="Export as indented text"
           >
             Export
           </button>
@@ -621,16 +621,16 @@ export default function Home() {
             className="rounded border border-zinc-300 px-2 py-0.5 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800 disabled:opacity-40"
             onClick={handleMarkdown}
             disabled={selectedId === null}
-            title="選択ノードをMarkdownに展開"
+            title="Export selected node as Markdown"
           >
             MD
           </button>
           <button
             className="rounded border border-zinc-300 px-2 py-0.5 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
             onClick={handleLoadBackups}
-            title="バックアップから復元"
+            title="Restore from backup"
           >
-            戻す
+            Restore
           </button>
         </div>
 
@@ -638,16 +638,16 @@ export default function Home() {
         {showBackups && (
           <div className="mx-4 mb-2 rounded border border-zinc-300 bg-zinc-50 p-2 text-xs dark:border-zinc-700 dark:bg-zinc-900">
             <div className="flex items-center justify-between mb-1">
-              <span className="font-semibold">バックアップ一覧</span>
+              <span className="font-semibold">Backups</span>
               <button
                 className="text-zinc-400 hover:text-zinc-600"
                 onClick={() => setShowBackups(false)}
               >
-                閉じる
+                Close
               </button>
             </div>
             {backups.length === 0 ? (
-              <p className="text-zinc-400">バックアップがありません</p>
+              <p className="text-zinc-400">No backups available</p>
             ) : (
               <ul className="space-y-0.5">
                 {backups.map((b, idx) => (
@@ -656,10 +656,10 @@ export default function Home() {
                       className="text-blue-500 hover:underline"
                       onClick={() => handleRestore(b.name)}
                     >
-                      {idx === 0 ? "最新" : `${idx + 1}番目`}
+                      {idx === 0 ? "Latest" : `#${idx + 1}`}
                     </button>
                     <span className="text-zinc-400">
-                      {new Date(b.mtime).toLocaleString("ja-JP")}
+                      {new Date(b.mtime).toLocaleString("en-US")}
                     </span>
                   </li>
                 ))}
@@ -712,7 +712,7 @@ export default function Home() {
                   className="rounded bg-blue-500 px-3 py-1 text-xs text-white hover:bg-blue-600"
                   onClick={handleImportConfirm}
                 >
-                  インポート
+                  Import
                 </button>
               )}
               {(modal === "export" || modal === "markdown") && (
@@ -722,7 +722,7 @@ export default function Home() {
                     navigator.clipboard.writeText(modalText);
                   }}
                 >
-                  コピー
+                  Copy
                 </button>
               )}
               <button
@@ -732,7 +732,7 @@ export default function Home() {
                   setModalText("");
                 }}
               >
-                閉じる
+                Close
               </button>
             </div>
           </div>

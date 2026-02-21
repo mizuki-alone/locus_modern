@@ -181,7 +181,7 @@ export default function TreeNode({
               ? "bg-blue-100 dark:bg-blue-900/30"
               : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
         } ${dropPosition === "child" ? "ring-2 ring-blue-400" : ""}`}
-        style={{ paddingLeft: `${node.indent * 20 + 8}px` }}
+        style={{ paddingLeft: `${node.indent * 12 + 4}px` }}
         onClick={() => onSelect(node.id)}
         onDoubleClick={() => onStartEdit(node.id)}
         data-node-id={node.id}
@@ -198,32 +198,39 @@ export default function TreeNode({
         {dropPosition === "before" && (
           <div
             className="absolute right-0 top-0 h-0.5 bg-blue-500 -translate-y-1/2"
-            style={{ left: `${dropIndent * 20 + 8}px` }}
+            style={{ left: `${dropIndent * 12 + 4}px` }}
           />
         )}
         {dropPosition === "after" && (
           <div
             className="absolute right-0 bottom-0 h-0.5 bg-blue-500 translate-y-1/2"
-            style={{ left: `${dropIndent * 20 + 8}px` }}
+            style={{ left: `${dropIndent * 12 + 4}px` }}
           />
         )}
 
-        {bullet ? (
-          <span className="mr-1 mt-0.5 w-5 shrink-0 text-right text-xs text-zinc-400 tabular-nums">
-            {bullet}
-          </span>
-        ) : hasChildren ? (
+        {hasChildren ? (
           <span
-            className="mr-1 mt-0.5 w-4 shrink-0 text-center text-xs text-zinc-400"
+            className="w-3 shrink-0 text-zinc-400 cursor-pointer"
+            style={{ marginTop: "5px" }}
             onClick={(e) => {
               e.stopPropagation();
               onToggle(node.id);
             }}
           >
-            {node.closed ? "\u25B6" : "\u25BC"}
+            <svg width="7" height="7" viewBox="0 0 8 8" className={`transition-transform ${node.closed ? "" : "rotate-90"}`}>
+              <path d="M2 1L6 4 2 7" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </span>
         ) : (
-          <span className="mr-1 mt-0.5 w-4 shrink-0 text-center text-xs text-zinc-300 dark:text-zinc-600">{"\u2022"}</span>
+          <span className="w-3 shrink-0 text-zinc-400" style={{ marginTop: "5px" }}>
+            <svg width="7" height="7" viewBox="0 0 8 8">
+              <circle cx="4" cy="4" r="1.5" fill="currentColor" />
+            </svg>
+          </span>
+        )}
+
+        {bullet && (
+          <span className="shrink-0 text-zinc-400 tabular-nums mr-0.5">{bullet}</span>
         )}
 
         {isEditing ? (
