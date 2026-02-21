@@ -174,7 +174,7 @@ export default function TreeNode({
     <div>
       <div
         ref={rowRef}
-        className={`flex items-start cursor-pointer select-none py-0.5 px-2 rounded relative ${
+        className={`flex items-start cursor-pointer select-none px-2 rounded relative ${
           isDragging
             ? "opacity-40"
             : isSelected

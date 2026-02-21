@@ -668,7 +668,7 @@ export default function Home() {
           </div>
         )}
 
-        <div className="text-sm font-mono">
+        <div style={{ fontFamily: "'ＭＳ Ｐゴシック', 'MS PGothic', Osaka, sans-serif", fontSize: "12px", color: "#333333" }}>
           {displayNodes.map((node) => (
             <TreeNode
               key={node.id}
