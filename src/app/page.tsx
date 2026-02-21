@@ -557,7 +557,7 @@ export default function Home() {
     <div className="min-h-screen bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
       <div className="mx-auto max-w-3xl py-4">
         <div className="flex items-center justify-between px-4 pb-3">
-          <h1 className="text-lg font-semibold">Locus</h1>
+          <h1 className="text-lg font-semibold">Locus Dev</h1>
           <div className="flex items-center gap-3">
             {saveStatus !== "idle" && (
               <span
