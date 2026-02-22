@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { useEffect, useLayoutEffect, useState, useCallback, useRef, useMemo } from "react";
 import TreeNode, { TreeNodeData } from "./components/TreeNode";
 import {
   flattenVisible,
@@ -34,7 +34,12 @@ type ModalType = "import" | "export" | "markdown" | null;
 
 export default function Home() {
   const [nodes, setNodes] = useState<TreeNodeData[]>([]);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedIdRaw] = useState<number | null>(null);
+  const selectedIdRef = useRef<number | null>(null);
+  const setSelectedId = useCallback((id: number | null) => {
+    selectedIdRef.current = id;
+    setSelectedIdRaw(id);
+  }, []);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +51,7 @@ export default function Home() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const clipboardRef = useRef<TreeNodeData | null>(null);
   const [dragId, setDragId] = useState<number | null>(null);
+  const skipScrollRef = useRef(false);
   const [modal, setModal] = useState<ModalType>(null);
   const [modalText, setModalText] = useState("");
   const [backups, setBackups] = useState<{ name: string; mtime: string }[]>([]);
@@ -148,7 +154,7 @@ export default function Home() {
       }
     }
     setEditingId(null);
-  }, [editingId, nodes, editText, update]);
+  }, [editingId, nodes, editText, update, setSelectedId]);
 
   const displayNodes = searchQuery ? filterTree(nodes, searchQuery) : nodes;
 
@@ -169,6 +175,9 @@ export default function Home() {
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
+      // Read latest selectedId from ref to avoid stale closure
+      const selectedId = selectedIdRef.current;
+
       // Don't handle keys when modal is open
       if (modal) return;
 
@@ -412,6 +421,17 @@ export default function Home() {
         return;
       }
 
+      // Ctrl+Arrow Up/Down: scroll view without changing selection
+      if ((e.key === "ArrowUp" || e.key === "ArrowDown") && e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        const nodeEl = selectedId !== null
+          ? document.querySelector(`[data-node-id="${selectedId}"]`)
+          : null;
+        const scrollAmount = nodeEl ? nodeEl.getBoundingClientRect().height : 16;
+        window.scrollBy(0, e.key === "ArrowDown" ? scrollAmount : -scrollAmount);
+        return;
+      }
+
       // Arrow Up/Down: move selection
       if (e.key === "ArrowUp" || e.key === "ArrowDown") {
         e.preventDefault();
@@ -427,14 +447,49 @@ export default function Home() {
           return;
         }
 
+        // Skip useLayoutEffect's scrollIntoView — we handle scroll manually here.
+        // Using scrollBy instead of scrollIntoView because scrollIntoView's scroll
+        // position gets "remembered" by the browser and overrides subsequent scrollBy calls.
+        skipScrollRef.current = true;
+
         if (e.key === "ArrowUp" && currentIndex > 0) {
-          setSelectedId(visible[currentIndex - 1].id);
+          const newId = visible[currentIndex - 1].id;
+          setSelectedId(newId);
+          const el = document.querySelector(`[data-node-id="${newId}"]`);
+          if (el) {
+            const rect = el.getBoundingClientRect();
+            if (rect.top < 0) {
+              window.scrollBy(0, rect.top);
+            } else if (rect.bottom > window.innerHeight) {
+              window.scrollBy(0, rect.bottom - window.innerHeight);
+            }
+          }
+        } else if (e.key === "ArrowUp" && currentIndex === 0) {
+          const nodeEl = document.querySelector(`[data-node-id="${selectedId}"]`);
+          if (nodeEl) {
+            window.scrollBy(0, -nodeEl.getBoundingClientRect().height);
+          }
         } else if (e.key === "ArrowDown" && currentIndex < visible.length - 1) {
-          setSelectedId(visible[currentIndex + 1].id);
+          const newId = visible[currentIndex + 1].id;
+          setSelectedId(newId);
+          const el = document.querySelector(`[data-node-id="${newId}"]`);
+          if (el) {
+            const rect = el.getBoundingClientRect();
+            if (rect.top < 0) {
+              window.scrollBy(0, rect.top);
+            } else if (rect.bottom > window.innerHeight) {
+              window.scrollBy(0, rect.bottom - window.innerHeight);
+            }
+          }
+        } else if (e.key === "ArrowDown" && currentIndex === visible.length - 1) {
+          const nodeEl = document.querySelector(`[data-node-id="${selectedId}"]`);
+          if (nodeEl) {
+            window.scrollBy(0, nodeEl.getBoundingClientRect().height);
+          }
         }
       }
     },
-    [nodes, selectedId, editingId, startEdit, update, undo, redo, searchQuery, displayNodes, modal]
+    [nodes, editingId, startEdit, update, undo, redo, searchQuery, displayNodes, modal, setSelectedId]
   );
 
   useEffect(() => {
@@ -442,8 +497,14 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
 
-  // Scroll selected node into view
-  useEffect(() => {
+  // Scroll selected node into view.
+  // Skip when ArrowUp/Down already handled scrolling directly,
+  // to prevent useLayoutEffect's scrollIntoView from undoing manual scrollBy.
+  useLayoutEffect(() => {
+    if (skipScrollRef.current) {
+      skipScrollRef.current = false;
+      return;
+    }
     if (selectedId !== null) {
       const el = document.querySelector(`[data-node-id="${selectedId}"]`);
       el?.scrollIntoView({ block: "nearest" });
@@ -467,7 +528,7 @@ export default function Home() {
       }
       setDragId(null);
     },
-    [nodes, update]
+    [nodes, update, setSelectedId]
   );
 
   const handleDragEnd = useCallback(() => {

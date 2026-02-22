@@ -96,7 +96,6 @@ export default function TreeNode({
   const isEditing = editingId === node.id;
   const isDragging = dragId === node.id;
   const hasChildren = node.children.length > 0;
-  const hasMultiline = node.text.includes("\n");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   const [dropPosition, setDropPosition] = useState<DropPosition>(null);
@@ -174,14 +173,14 @@ export default function TreeNode({
     <div>
       <div
         ref={rowRef}
-        className={`flex items-start cursor-pointer select-none px-2 rounded relative ${
+        className={`flex items-start cursor-pointer select-none pr-2 rounded relative ${
           isDragging
             ? "opacity-40"
             : isSelected
               ? "bg-blue-100 dark:bg-blue-900/30"
               : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
         } ${dropPosition === "child" ? "ring-2 ring-blue-400" : ""}`}
-        style={{ paddingLeft: `${node.indent * 12 + 16}px` }}
+        style={{ marginLeft: `${node.indent * 12 + 16}px` }}
         onClick={() => onSelect(node.id)}
         onDoubleClick={() => onStartEdit(node.id)}
         data-node-id={node.id}
@@ -198,13 +197,13 @@ export default function TreeNode({
         {dropPosition === "before" && (
           <div
             className="absolute right-0 top-0 h-0.5 bg-blue-500 -translate-y-1/2"
-            style={{ left: `${dropIndent * 12 + 16}px` }}
+            style={{ left: `${(dropIndent - node.indent) * 12}px` }}
           />
         )}
         {dropPosition === "after" && (
           <div
             className="absolute right-0 bottom-0 h-0.5 bg-blue-500 translate-y-1/2"
-            style={{ left: `${dropIndent * 12 + 16}px` }}
+            style={{ left: `${(dropIndent - node.indent) * 12}px` }}
           />
         )}
 
@@ -256,7 +255,7 @@ export default function TreeNode({
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <span className={hasMultiline ? "whitespace-pre-wrap" : "truncate"}>
+          <span className="whitespace-pre-wrap">
             {node.text ? (
               <HighlightedText text={node.text} query={searchQuery || ""} />
             ) : (
