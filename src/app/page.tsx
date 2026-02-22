@@ -611,7 +611,7 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+    <div className="min-h-screen bg-white dark:bg-zinc-950 dark:text-zinc-100" style={{ color: "#333" }}>
       <div className="mx-auto max-w-3xl py-4">
         <div className="flex items-center justify-between px-4 pb-3">
           <h1 className="text-lg font-semibold">Locus</h1>
@@ -689,7 +689,7 @@ export default function Home() {
           >
             Restore
           </button>
-          <label className="ml-2 flex items-center gap-1 cursor-pointer select-none text-zinc-500 dark:text-zinc-400" title="Toggle edit mode on add (Enter/Tab)">
+          <label className="ml-2 flex items-center gap-1 cursor-pointer select-none" title="Toggle edit mode on add (Enter/Tab)">
             <input
               type="checkbox"
               checked={editOnAdd}
@@ -734,7 +734,7 @@ export default function Home() {
           </div>
         )}
 
-        <div style={{ fontFamily: "'ＭＳ Ｐゴシック', 'MS PGothic', Osaka, sans-serif", fontSize: "12px", letterSpacing: "1px", color: "#333333" }}>
+        <div style={{ fontFamily: "'ＭＳ Ｐゴシック', 'MS PGothic', Osaka, sans-serif", fontSize: "12px", letterSpacing: "1px" }}>
           {displayNodes.map((node) => (
             <TreeNode
               key={node.id}
