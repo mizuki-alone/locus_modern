@@ -56,6 +56,7 @@ export default function Home() {
   const [modalText, setModalText] = useState("");
   const [backups, setBackups] = useState<{ name: string; mtime: string }[]>([]);
   const [showBackups, setShowBackups] = useState(false);
+  const [editOnAdd, setEditOnAdd] = useState(true);
 
   const saveTree = useCallback((data: TreeNodeData[]) => {
     setSaveStatus("saving");
@@ -288,8 +289,7 @@ export default function Home() {
         if (result) {
           update(result.tree);
           setSelectedId(newId);
-          setEditingId(newId);
-          setEditText("");
+          if (editOnAdd) { setEditingId(newId); setEditText(""); }
         }
         return;
       }
@@ -302,8 +302,7 @@ export default function Home() {
         if (result) {
           update(result.tree);
           setSelectedId(newId);
-          setEditingId(newId);
-          setEditText("");
+          if (editOnAdd) { setEditingId(newId); setEditText(""); }
         }
         return;
       }
@@ -315,8 +314,7 @@ export default function Home() {
         const { tree } = addChildNodeFirst(nodes, selectedId, newId);
         update(tree);
         setSelectedId(newId);
-        setEditingId(newId);
-        setEditText("");
+        if (editOnAdd) { setEditingId(newId); setEditText(""); }
         return;
       }
 
@@ -327,9 +325,7 @@ export default function Home() {
         const { tree } = addChildNode(nodes, selectedId, newId);
         update(tree);
         setSelectedId(newId);
-        // Start editing the new node
-        setEditingId(newId);
-        setEditText("");
+        if (editOnAdd) { setEditingId(newId); setEditText(""); }
         return;
       }
 
@@ -489,7 +485,7 @@ export default function Home() {
         }
       }
     },
-    [nodes, editingId, startEdit, update, undo, redo, searchQuery, displayNodes, modal, setSelectedId]
+    [nodes, editingId, editOnAdd, startEdit, update, undo, redo, searchQuery, displayNodes, modal, setSelectedId]
   );
 
   useEffect(() => {
@@ -693,6 +689,15 @@ export default function Home() {
           >
             Restore
           </button>
+          <label className="ml-2 flex items-center gap-1 cursor-pointer select-none text-zinc-500 dark:text-zinc-400" title="Toggle edit mode on add (Enter/Tab)">
+            <input
+              type="checkbox"
+              checked={editOnAdd}
+              onChange={(e) => setEditOnAdd(e.target.checked)}
+              className="cursor-pointer"
+            />
+            Edit on add
+          </label>
         </div>
 
         {/* Backup list */}

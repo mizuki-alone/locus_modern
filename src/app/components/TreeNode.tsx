@@ -259,7 +259,7 @@ export default function TreeNode({
             {node.text ? (
               <HighlightedText text={node.text} query={searchQuery || ""} />
             ) : (
-              "(empty)"
+              <span className="text-zinc-400">(empty)</span>
             )}
           </span>
         )}
