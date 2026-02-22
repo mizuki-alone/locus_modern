@@ -281,6 +281,50 @@ export default function Home() {
         return;
       }
 
+      // Page Up / Page Down: move selection by one page
+      if (e.key === "PageUp" || e.key === "PageDown") {
+        e.preventDefault();
+
+        if (selectedId === null) {
+          setSelectedId(visible[0].id);
+          return;
+        }
+
+        const currentIndex = visible.findIndex((n) => n.id === selectedId);
+        if (currentIndex === -1) {
+          setSelectedId(visible[0].id);
+          return;
+        }
+
+        // Remember current selection's screen Y position
+        const currentEl = document.querySelector(`[data-node-id="${selectedId}"]`);
+        const oldTop = currentEl ? currentEl.getBoundingClientRect().top : 0;
+
+        // Calculate page size from viewport height and node row height
+        const nodeEl = document.querySelector(`[data-node-id]`);
+        const rowHeight = nodeEl ? nodeEl.getBoundingClientRect().height : 32;
+        const pageSize = Math.max(1, Math.floor(window.innerHeight / rowHeight) - 1);
+
+        let newIndex: number;
+        if (e.key === "PageUp") {
+          newIndex = Math.max(0, currentIndex - pageSize);
+        } else {
+          newIndex = Math.min(visible.length - 1, currentIndex + pageSize);
+        }
+
+        skipScrollRef.current = true;
+        const newId = visible[newIndex].id;
+        setSelectedId(newId);
+
+        // Scroll by exact difference so new selection appears at same screen position
+        const newEl = document.querySelector(`[data-node-id="${newId}"]`);
+        if (newEl) {
+          const newTop = newEl.getBoundingClientRect().top;
+          window.scrollBy(0, newTop - oldTop);
+        }
+        return;
+      }
+
       // Shift+Enter: add sibling before
       if (e.key === "Enter" && e.shiftKey && selectedId !== null) {
         e.preventDefault();
