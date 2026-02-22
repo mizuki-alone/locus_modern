@@ -92,7 +92,7 @@ export default function Home() {
       .catch((err) => setError(err.message));
   }, []);
 
-  const UNDO_LIMIT = 1000;
+  const UNDO_LIMIT = 50;
 
   const update = useCallback(
     (newNodes: TreeNodeData[]) => {
