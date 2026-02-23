@@ -188,10 +188,31 @@ function rotateBackups() {
   }
 }
 
+/** Create a weekly permanent backup (one per week, never rotated) */
+function ensureWeeklyBackup() {
+  if (!fs.existsSync(MEMO_PATH)) return;
+
+  const now = new Date();
+  // Find this week's Monday
+  const day = now.getDay(); // 0=Sun, 1=Mon, ...
+  const diff = day === 0 ? 6 : day - 1; // days since Monday
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - diff);
+  const dateStr = monday.toISOString().slice(0, 10); // YYYY-MM-DD
+
+  const dir = path.dirname(MEMO_PATH);
+  const weeklyPath = path.join(dir, `memo_weekly_${dateStr}.cgi`);
+
+  if (!fs.existsSync(weeklyPath)) {
+    fs.copyFileSync(MEMO_PATH, weeklyPath);
+  }
+}
+
 export async function PUT(request: Request) {
   try {
     const { nodes } = (await request.json()) as { nodes: TreeNode[] };
     const content = serializeTree(nodes, 0);
+    ensureWeeklyBackup();
     rotateBackups();
     fs.writeFileSync(MEMO_PATH, content, "utf-8");
     return NextResponse.json({ ok: true });

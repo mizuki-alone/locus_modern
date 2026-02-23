@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   filterTree, copyNode, pasteNode, findNode, nextId, moveNode,
   addSiblingBefore, addChildNodeFirst, treeToText, textToTree, treeToMarkdown, toggleOl,
+  countAllNodes,
 } from "./treeUtils";
 import { TreeNodeData } from "../components/TreeNode";
 
@@ -311,6 +312,23 @@ describe("toggleOl（OLフラグ切替）", () => {
     const second = toggleOl(first, 1);
     const node = findNode(second, 1)!;
     expect(node.ol).toBe(false);
+  });
+});
+
+describe("countAllNodes", () => {
+  it("counts all nodes including children", () => {
+    expect(countAllNodes(testTree)).toBe(7);
+  });
+
+  it("returns 0 for empty array", () => {
+    expect(countAllNodes([])).toBe(0);
+  });
+
+  it("returns 1 for a single leaf node", () => {
+    const single: TreeNodeData[] = [
+      { id: 1, text: "leaf", indent: 1, closed: false, children: [] },
+    ];
+    expect(countAllNodes(single)).toBe(1);
   });
 });
 

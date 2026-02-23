@@ -23,6 +23,7 @@ import {
   copyNode,
   pasteNode,
   moveNode,
+  countAllNodes,
   treeToText,
   textToTree,
   treeToMarkdown,
@@ -31,6 +32,7 @@ import {
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 type ModalType = "import" | "export" | "markdown" | null;
+type UndoEntry = { nodes: TreeNodeData[]; selectedId: number | null };
 
 export default function Home() {
   const [nodes, setNodes] = useState<TreeNodeData[]>([]);
@@ -45,8 +47,8 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
-  const undoStack = useRef<TreeNodeData[][]>([]);
-  const redoStack = useRef<TreeNodeData[][]>([]);
+  const undoStack = useRef<UndoEntry[]>([]);
+  const redoStack = useRef<UndoEntry[]>([]);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const clipboardRef = useRef<TreeNodeData | null>(null);
@@ -58,6 +60,7 @@ export default function Home() {
   const [backups, setBackups] = useState<{ name: string; mtime: string }[]>([]);
   const [showBackups, setShowBackups] = useState(false);
   const [editOnAdd, setEditOnAdd] = useState(true);
+  const prevCountRef = useRef<number | null>(null);
 
   const saveTree = useCallback((data: TreeNodeData[]) => {
     setSaveStatus("saving");
@@ -88,6 +91,7 @@ export default function Home() {
         } else {
           setNodes(data.nodes);
           nodesRef.current = data.nodes;
+          prevCountRef.current = countAllNodes(data.nodes);
         }
       })
       .catch((err) => setError(err.message));
@@ -97,7 +101,24 @@ export default function Home() {
 
   const update = useCallback(
     (newNodes: TreeNodeData[]) => {
-      undoStack.current.push(nodesRef.current);
+      // Check for significant node count drop before saving
+      const newCount = countAllNodes(newNodes);
+      const prevCount = prevCountRef.current;
+      if (prevCount !== null && prevCount > 0) {
+        const decrease = (prevCount - newCount) / prevCount;
+        if (decrease >= 0.1) {
+          const pct = Math.round(decrease * 100);
+          const ok = window.confirm(
+            `Node count dropped from ${prevCount.toLocaleString()} to ${newCount.toLocaleString()} (${pct}% decrease). Save anyway?`
+          );
+          if (!ok) {
+            // Don't save — undo is not needed since we haven't pushed yet
+            return;
+          }
+        }
+      }
+
+      undoStack.current.push({ nodes: nodesRef.current, selectedId: selectedIdRef.current });
       if (undoStack.current.length > UNDO_LIMIT) {
         undoStack.current.splice(0, undoStack.current.length - UNDO_LIMIT);
       }
@@ -105,6 +126,7 @@ export default function Home() {
       nodesRef.current = newNodes;
       setNodes(newNodes);
       saveTree(newNodes);
+      prevCountRef.current = newCount;
     },
     [saveTree]
   );
@@ -112,20 +134,24 @@ export default function Home() {
   const undo = useCallback(() => {
     const prev = undoStack.current.pop();
     if (!prev) return;
-    redoStack.current.push(nodesRef.current);
-    nodesRef.current = prev;
-    setNodes(prev);
-    saveTree(prev);
-  }, [saveTree]);
+    redoStack.current.push({ nodes: nodesRef.current, selectedId: selectedIdRef.current });
+    nodesRef.current = prev.nodes;
+    setNodes(prev.nodes);
+    setSelectedId(prev.selectedId);
+    saveTree(prev.nodes);
+    prevCountRef.current = countAllNodes(prev.nodes);
+  }, [saveTree, setSelectedId]);
 
   const redo = useCallback(() => {
     const next = redoStack.current.pop();
     if (!next) return;
-    undoStack.current.push(nodesRef.current);
-    nodesRef.current = next;
-    setNodes(next);
-    saveTree(next);
-  }, [saveTree]);
+    undoStack.current.push({ nodes: nodesRef.current, selectedId: selectedIdRef.current });
+    nodesRef.current = next.nodes;
+    setNodes(next.nodes);
+    setSelectedId(next.selectedId);
+    saveTree(next.nodes);
+    prevCountRef.current = countAllNodes(next.nodes);
+  }, [saveTree, setSelectedId]);
 
   const startEdit = useCallback(
     (id: number) => {
@@ -160,6 +186,8 @@ export default function Home() {
   }, [editingId, nodes, editText, update, setSelectedId]);
 
   const displayNodes = searchQuery ? filterTree(nodes, searchQuery) : nodes;
+
+  const nodeCount = useMemo(() => countAllNodes(nodes), [nodes]);
 
   // Count search hits
   const searchHitCount = useMemo(() => {
@@ -748,6 +776,9 @@ export default function Home() {
             />
             Edit on add
           </label>
+          <span className="ml-auto text-zinc-400" title="Total node count">
+            {nodeCount.toLocaleString()} nodes
+          </span>
         </div>
 
         {/* Backup list */}

@@ -514,6 +514,16 @@ export function treeToMarkdown(
   return result;
 }
 
+/** Count all nodes in the tree recursively */
+export function countAllNodes(nodes: TreeNodeData[]): number {
+  let count = 0;
+  for (const node of nodes) {
+    count++;
+    count += countAllNodes(node.children);
+  }
+  return count;
+}
+
 /** Toggle OL (ordered list) flag on a node */
 export function toggleOl(
   nodes: TreeNodeData[],
