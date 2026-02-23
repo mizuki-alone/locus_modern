@@ -52,6 +52,7 @@ export default function Home() {
   const clipboardRef = useRef<TreeNodeData | null>(null);
   const [dragId, setDragId] = useState<number | null>(null);
   const skipScrollRef = useRef(false);
+  const addOriginRef = useRef<number | null>(null);
   const [modal, setModal] = useState<ModalType>(null);
   const [modalText, setModalText] = useState("");
   const [backups, setBackups] = useState<{ name: string; mtime: string }[]>([]);
@@ -145,13 +146,14 @@ export default function Home() {
   }, [nodes, editingId, editText, update]);
 
   const cancelEdit = useCallback(() => {
-    // If editing a new empty node, delete it
+    // If editing a new empty node, delete it and return selection to the origin node
     if (editingId !== null) {
       const node = findNode(nodes, editingId);
       if (node && node.text === "" && editText === "") {
         const newNodes = deleteNode(nodes, editingId);
         update(newNodes);
-        setSelectedId(null);
+        setSelectedId(addOriginRef.current);
+        addOriginRef.current = null;
       }
     }
     setEditingId(null);
@@ -332,6 +334,7 @@ export default function Home() {
         const result = addSiblingBefore(nodes, selectedId, newId);
         if (result) {
           update(result.tree);
+          addOriginRef.current = selectedId;
           setSelectedId(newId);
           if (editOnAdd) { setEditingId(newId); setEditText(""); }
         }
@@ -345,6 +348,7 @@ export default function Home() {
         const result = addSiblingNode(nodes, selectedId, newId);
         if (result) {
           update(result.tree);
+          addOriginRef.current = selectedId;
           setSelectedId(newId);
           if (editOnAdd) { setEditingId(newId); setEditText(""); }
         }
@@ -357,6 +361,7 @@ export default function Home() {
         const newId = nextId(nodes);
         const { tree } = addChildNodeFirst(nodes, selectedId, newId);
         update(tree);
+        addOriginRef.current = selectedId;
         setSelectedId(newId);
         if (editOnAdd) { setEditingId(newId); setEditText(""); }
         return;
@@ -368,6 +373,7 @@ export default function Home() {
         const newId = nextId(nodes);
         const { tree } = addChildNode(nodes, selectedId, newId);
         update(tree);
+        addOriginRef.current = selectedId;
         setSelectedId(newId);
         if (editOnAdd) { setEditingId(newId); setEditText(""); }
         return;
