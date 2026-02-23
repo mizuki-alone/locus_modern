@@ -209,7 +209,7 @@ export default function TreeNode({
 
         {hasChildren ? (
           <span
-            className="w-3 shrink-0 text-zinc-400 cursor-pointer"
+            className="w-3 mr-0.5 shrink-0 text-zinc-400 cursor-pointer flex items-center justify-center"
             style={{ marginTop: "5px" }}
             onClick={(e) => {
               e.stopPropagation();
@@ -221,7 +221,7 @@ export default function TreeNode({
             </svg>
           </span>
         ) : (
-          <span className="w-3 shrink-0 text-zinc-400" style={{ marginTop: "5px" }}>
+          <span className="w-3 mr-0.5 shrink-0 text-zinc-400 flex items-center justify-center" style={{ marginTop: "5px" }}>
             <svg width="7" height="7" viewBox="0 0 8 8">
               <circle cx="4" cy="4" r="1.5" fill="currentColor" />
             </svg>
