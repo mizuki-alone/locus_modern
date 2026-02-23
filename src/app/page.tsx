@@ -300,14 +300,32 @@ export default function Home() {
       // Home: select first visible node
       if (e.key === "Home" && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
-        setSelectedId(visible[0].id);
+        skipScrollRef.current = true;
+        const newId = visible[0].id;
+        setSelectedId(newId);
+        const el = document.querySelector(`[data-node-id="${newId}"]`);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          if (rect.top < 0 || rect.bottom > window.innerHeight) {
+            window.scrollBy(0, rect.top);
+          }
+        }
         return;
       }
 
       // End: select last visible node
       if (e.key === "End" && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
-        setSelectedId(visible[visible.length - 1].id);
+        skipScrollRef.current = true;
+        const newId = visible[visible.length - 1].id;
+        setSelectedId(newId);
+        const el = document.querySelector(`[data-node-id="${newId}"]`);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          if (rect.top < 0 || rect.bottom > window.innerHeight) {
+            window.scrollBy(0, rect.bottom - window.innerHeight);
+          }
+        }
         return;
       }
 
