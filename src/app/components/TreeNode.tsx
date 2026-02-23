@@ -209,19 +209,23 @@ export default function TreeNode({
 
         {hasChildren ? (
           <span
-            className="w-3 mr-0.5 shrink-0 text-zinc-400 cursor-pointer flex items-center justify-center"
-            style={{ marginTop: "5px" }}
+            className="shrink-0 text-zinc-400 cursor-pointer flex items-center justify-center"
+            style={{ paddingTop: "5px", paddingBottom: "5px", paddingLeft: "5px", paddingRight: "5px" }}
             onClick={(e) => {
               e.stopPropagation();
+              onSelect(node.id);
               onToggle(node.id);
             }}
+            onDoubleClick={(e) => e.stopPropagation()}
           >
             <svg width="7" height="7" viewBox="0 0 8 8" className={`transition-transform ${node.closed ? "" : "rotate-90"}`}>
               <path d="M2 1L6 4 2 7" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </span>
         ) : (
-          <span className="w-3 mr-0.5 shrink-0 text-zinc-400 flex items-center justify-center" style={{ marginTop: "5px" }}>
+          <span className="shrink-0 text-zinc-400 flex items-center justify-center" style={{ paddingTop: "5px", paddingBottom: "5px", paddingLeft: "5px", paddingRight: "5px" }}
+            onDoubleClick={(e) => e.stopPropagation()}
+          >
             <svg width="7" height="7" viewBox="0 0 8 8">
               <circle cx="4" cy="4" r="1.5" fill="currentColor" />
             </svg>
