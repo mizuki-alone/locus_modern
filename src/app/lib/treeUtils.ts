@@ -174,6 +174,19 @@ export function deleteNode(
     }));
 }
 
+/** Delete multiple nodes by ids */
+export function deleteNodes(
+  nodes: TreeNodeData[],
+  ids: Set<number>
+): TreeNodeData[] {
+  return nodes
+    .filter((n) => !ids.has(n.id))
+    .map((n) => ({
+      ...n,
+      children: deleteNodes(n.children, ids),
+    }));
+}
+
 /** Indent: move node to become the last child of its previous sibling */
 export function indentNode(
   nodes: TreeNodeData[],
@@ -533,6 +546,28 @@ export function toggleOl(
   const node = findNode(tree, id);
   if (node) node.ol = !node.ol;
   return tree;
+}
+
+/** Get the IDs of sibling nodes between id1 and id2 (inclusive).
+ *  Returns null if id1 and id2 are not siblings (different parent). */
+export function getSiblingRange(
+  nodes: TreeNodeData[],
+  id1: number,
+  id2: number
+): number[] | null {
+  const ctx1 = findParentContext(nodes, id1);
+  const ctx2 = findParentContext(nodes, id2);
+  if (!ctx1 || !ctx2) return null;
+
+  // Check same parent: both must share the same siblings array
+  const sameParent =
+    ctx1.parent === ctx2.parent &&
+    ctx1.siblings === ctx2.siblings;
+  if (!sameParent) return null;
+
+  const start = Math.min(ctx1.index, ctx2.index);
+  const end = Math.max(ctx1.index, ctx2.index);
+  return ctx1.siblings.slice(start, end + 1).map((n) => n.id);
 }
 
 /** Move a node to a new position. mode: "after" = sibling after target, "child" = child of target.

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   filterTree, copyNode, pasteNode, findNode, nextId, moveNode,
   addSiblingBefore, addChildNodeFirst, treeToText, textToTree, treeToMarkdown, toggleOl,
-  countAllNodes,
+  countAllNodes, getSiblingRange, deleteNodes,
 } from "./treeUtils";
 import { TreeNodeData } from "../components/TreeNode";
 
@@ -329,6 +329,73 @@ describe("countAllNodes", () => {
       { id: 1, text: "leaf", indent: 1, closed: false, children: [] },
     ];
     expect(countAllNodes(single)).toBe(1);
+  });
+});
+
+describe("getSiblingRange（兄弟範囲取得）", () => {
+  it("同じ親の兄弟間の全IDを返す", () => {
+    // デザイン(2) と コーディング(4) は覚書(1)の子
+    const result = getSiblingRange(testTree, 2, 4);
+    expect(result).toEqual([2, 4]);
+  });
+
+  it("順序が逆でも正しく返す", () => {
+    const result = getSiblingRange(testTree, 4, 2);
+    expect(result).toEqual([2, 4]);
+  });
+
+  it("同じノードを指定すると1要素の配列を返す", () => {
+    const result = getSiblingRange(testTree, 2, 2);
+    expect(result).toEqual([2]);
+  });
+
+  it("トップレベル兄弟でも動作する", () => {
+    const result = getSiblingRange(testTree, 1, 6);
+    expect(result).toEqual([1, 6]);
+  });
+
+  it("異なる親の場合はnullを返す", () => {
+    // デザイン(2) は覚書の子、買い物リスト(7) はタスクの子
+    const result = getSiblingRange(testTree, 2, 7);
+    expect(result).toBeNull();
+  });
+
+  it("親子関係のノードはnullを返す", () => {
+    // 覚書(1) と デザイン(2) は親子
+    const result = getSiblingRange(testTree, 1, 2);
+    expect(result).toBeNull();
+  });
+
+  it("存在しないノードはnullを返す", () => {
+    const result = getSiblingRange(testTree, 1, 999);
+    expect(result).toBeNull();
+  });
+});
+
+describe("deleteNodes（複数ノード一括削除）", () => {
+  it("兄弟2つを一括削除できる", () => {
+    // デザイン(2) と コーディング(4) を削除
+    const result = deleteNodes(testTree, new Set([2, 4]));
+    const parent = findNode(result, 1)!;
+    expect(parent.children).toHaveLength(0);
+  });
+
+  it("削除対象の子ノードも消える", () => {
+    // デザイン(2) を削除 → 子の配色ルール(3) も消える
+    const result = deleteNodes(testTree, new Set([2]));
+    expect(findNode(result, 3)).toBeNull();
+  });
+
+  it("削除対象でないノードは残る", () => {
+    const result = deleteNodes(testTree, new Set([2, 4]));
+    expect(findNode(result, 1)).not.toBeNull();
+    expect(findNode(result, 6)).not.toBeNull();
+    expect(findNode(result, 7)).not.toBeNull();
+  });
+
+  it("空Setなら何も削除されない", () => {
+    const result = deleteNodes(testTree, new Set());
+    expect(countAllNodes(result)).toBe(7);
   });
 });
 

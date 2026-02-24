@@ -14,6 +14,7 @@ import {
   addChildNode,
   addChildNodeFirst,
   deleteNode,
+  deleteNodes,
   indentNode,
   outdentNode,
   moveNodeUp,
@@ -28,6 +29,7 @@ import {
   textToTree,
   treeToMarkdown,
   toggleOl,
+  getSiblingRange,
 } from "./lib/treeUtils";
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -55,6 +57,13 @@ export default function Home() {
   const [dragId, setDragId] = useState<number | null>(null);
   const skipScrollRef = useRef(false);
   const addOriginRef = useRef<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const selectedIdsRef = useRef<Set<number>>(new Set());
+  const setSelectedIdsWrapped = useCallback((ids: Set<number>) => {
+    selectedIdsRef.current = ids;
+    setSelectedIds(ids);
+  }, []);
+  const selectionAnchorRef = useRef<number | null>(null);
   const [modal, setModal] = useState<ModalType>(null);
   const [modalText, setModalText] = useState("");
   const [backups, setBackups] = useState<{ name: string; mtime: string }[]>([]);
@@ -206,8 +215,9 @@ export default function Home() {
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // Read latest selectedId from ref to avoid stale closure
+      // Read latest values from refs to avoid stale closure
       const selectedId = selectedIdRef.current;
+      const selectedIds = selectedIdsRef.current;
 
       // Don't handle keys when modal is open
       if (modal) return;
@@ -282,6 +292,8 @@ export default function Home() {
 
       // Escape: clear search first, then deselect
       if (e.key === "Escape") {
+        setSelectedIdsWrapped(new Set());
+        selectionAnchorRef.current = null;
         if (searchQuery) {
           setSearchQuery("");
         } else {
@@ -293,6 +305,8 @@ export default function Home() {
       // F2 or Space: edit selected node
       if ((e.key === "F2" || e.key === " ") && selectedId !== null) {
         e.preventDefault();
+        setSelectedIdsWrapped(new Set());
+        selectionAnchorRef.current = null;
         startEdit(selectedId);
         return;
       }
@@ -300,6 +314,8 @@ export default function Home() {
       // Home: select first visible node
       if (e.key === "Home" && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
+        setSelectedIdsWrapped(new Set());
+        selectionAnchorRef.current = null;
         skipScrollRef.current = true;
         const newId = visible[0].id;
         setSelectedId(newId);
@@ -316,6 +332,8 @@ export default function Home() {
       // End: select last visible node
       if (e.key === "End" && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
+        setSelectedIdsWrapped(new Set());
+        selectionAnchorRef.current = null;
         skipScrollRef.current = true;
         const newId = visible[visible.length - 1].id;
         setSelectedId(newId);
@@ -332,6 +350,8 @@ export default function Home() {
       // Page Up / Page Down: move selection by one page
       if (e.key === "PageUp" || e.key === "PageDown") {
         e.preventDefault();
+        setSelectedIdsWrapped(new Set());
+        selectionAnchorRef.current = null;
 
         if (selectedId === null) {
           setSelectedId(visible[0].id);
@@ -376,6 +396,8 @@ export default function Home() {
       // Shift+Enter: add sibling before
       if (e.key === "Enter" && e.shiftKey && selectedId !== null) {
         e.preventDefault();
+        setSelectedIdsWrapped(new Set());
+        selectionAnchorRef.current = null;
         const newId = nextId(nodes);
         const result = addSiblingBefore(nodes, selectedId, newId);
         if (result) {
@@ -390,6 +412,8 @@ export default function Home() {
       // Enter: add sibling node
       if (e.key === "Enter" && selectedId !== null) {
         e.preventDefault();
+        setSelectedIdsWrapped(new Set());
+        selectionAnchorRef.current = null;
         const newId = nextId(nodes);
         const result = addSiblingNode(nodes, selectedId, newId);
         if (result) {
@@ -404,6 +428,8 @@ export default function Home() {
       // Shift+Tab: add child node at beginning
       if (e.key === "Tab" && e.shiftKey && selectedId !== null) {
         e.preventDefault();
+        setSelectedIdsWrapped(new Set());
+        selectionAnchorRef.current = null;
         const newId = nextId(nodes);
         const { tree } = addChildNodeFirst(nodes, selectedId, newId);
         update(tree);
@@ -416,6 +442,8 @@ export default function Home() {
       // Tab: add child node
       if (e.key === "Tab" && selectedId !== null) {
         e.preventDefault();
+        setSelectedIdsWrapped(new Set());
+        selectionAnchorRef.current = null;
         const newId = nextId(nodes);
         const { tree } = addChildNode(nodes, selectedId, newId);
         update(tree);
@@ -425,14 +453,23 @@ export default function Home() {
         return;
       }
 
-      // Delete: delete selected node
+      // Delete: delete selected node(s)
       if (e.key === "Delete" && selectedId !== null) {
         e.preventDefault();
         const currentIndex = visible.findIndex((n) => n.id === selectedId);
-        const newNodes = deleteNode(nodes, selectedId);
+        let newNodes: TreeNodeData[];
+        if (selectedIds.size > 0) {
+          newNodes = deleteNodes(nodes, selectedIds);
+        } else {
+          newNodes = deleteNode(nodes, selectedId);
+        }
         update(newNodes);
+        setSelectedIdsWrapped(new Set());
+        selectionAnchorRef.current = null;
         // Select next or previous visible node
-        const newVisible = flattenVisible(newNodes);
+        const newVisible = flattenVisible(
+          searchQuery ? filterTree(newNodes, searchQuery) : newNodes
+        );
         if (newVisible.length === 0) {
           setSelectedId(null);
         } else if (currentIndex < newVisible.length) {
@@ -524,7 +561,7 @@ export default function Home() {
         return;
       }
 
-      // Arrow Up/Down: move selection
+      // Arrow Up/Down: move selection (with optional Shift for range select)
       if (e.key === "ArrowUp" || e.key === "ArrowDown") {
         e.preventDefault();
 
@@ -540,30 +577,43 @@ export default function Home() {
         }
 
         // Skip useLayoutEffect's scrollIntoView — we handle scroll manually here.
-        // Using scrollBy instead of scrollIntoView because scrollIntoView's scroll
-        // position gets "remembered" by the browser and overrides subsequent scrollBy calls.
         skipScrollRef.current = true;
 
+        // Calculate new index
+        let newIndex = currentIndex;
         if (e.key === "ArrowUp" && currentIndex > 0) {
-          const newId = visible[currentIndex - 1].id;
-          setSelectedId(newId);
-          const el = document.querySelector(`[data-node-id="${newId}"]`);
-          if (el) {
-            const rect = el.getBoundingClientRect();
-            if (rect.top < 0) {
-              window.scrollBy(0, rect.top);
-            } else if (rect.bottom > window.innerHeight) {
-              window.scrollBy(0, rect.bottom - window.innerHeight);
-            }
-          }
-        } else if (e.key === "ArrowUp" && currentIndex === 0) {
-          const nodeEl = document.querySelector(`[data-node-id="${selectedId}"]`);
-          if (nodeEl) {
-            window.scrollBy(0, -nodeEl.getBoundingClientRect().height);
-          }
+          newIndex = currentIndex - 1;
         } else if (e.key === "ArrowDown" && currentIndex < visible.length - 1) {
-          const newId = visible[currentIndex + 1].id;
-          setSelectedId(newId);
+          newIndex = currentIndex + 1;
+        }
+
+        if (newIndex !== currentIndex) {
+          const newId = visible[newIndex].id;
+
+          if (e.shiftKey) {
+            // Shift+Arrow: range selection among siblings
+            if (selectionAnchorRef.current === null) {
+              selectionAnchorRef.current = selectedId;
+            }
+            const anchorId = selectionAnchorRef.current;
+            setSelectedId(newId);
+
+            // Check if anchor and new selection are siblings
+            const range = getSiblingRange(nodes, anchorId, newId);
+            if (range) {
+              setSelectedIdsWrapped(new Set(range));
+            } else {
+              // Not siblings — no multi-selection, just move main selection
+              setSelectedIdsWrapped(new Set());
+            }
+          } else {
+            // Normal arrow: clear multi-selection
+            setSelectedIdsWrapped(new Set());
+            selectionAnchorRef.current = null;
+            setSelectedId(newId);
+          }
+
+          // Scroll new selection into view
           const el = document.querySelector(`[data-node-id="${newId}"]`);
           if (el) {
             const rect = el.getBoundingClientRect();
@@ -573,10 +623,16 @@ export default function Home() {
               window.scrollBy(0, rect.bottom - window.innerHeight);
             }
           }
-        } else if (e.key === "ArrowDown" && currentIndex === visible.length - 1) {
+        } else {
+          // At boundary — just scroll a bit
+          if (!e.shiftKey) {
+            setSelectedIdsWrapped(new Set());
+            selectionAnchorRef.current = null;
+          }
           const nodeEl = document.querySelector(`[data-node-id="${selectedId}"]`);
           if (nodeEl) {
-            window.scrollBy(0, nodeEl.getBoundingClientRect().height);
+            const scrollDir = e.key === "ArrowUp" ? -1 : 1;
+            window.scrollBy(0, scrollDir * nodeEl.getBoundingClientRect().height);
           }
         }
       }
@@ -609,6 +665,15 @@ export default function Home() {
       update(newNodes);
     },
     [nodes, update]
+  );
+
+  const handleSelect = useCallback(
+    (id: number) => {
+      setSelectedIdsWrapped(new Set());
+      selectionAnchorRef.current = null;
+      setSelectedId(id);
+    },
+    [setSelectedId]
   );
 
   const handleDrop = useCallback(
@@ -839,11 +904,12 @@ export default function Home() {
               key={node.id}
               node={node}
               selectedId={selectedId}
+              selectedIds={selectedIds}
               editingId={editingId}
               editText={editText}
               dragId={dragId}
               searchQuery={searchQuery}
-              onSelect={setSelectedId}
+              onSelect={handleSelect}
               onToggle={handleToggle}
               onStartEdit={startEdit}
               onEditTextChange={setEditText}

@@ -16,6 +16,7 @@ type DropPosition = "before" | "after" | "child" | null;
 interface TreeNodeProps {
   node: TreeNodeData;
   selectedId: number | null;
+  selectedIds?: Set<number>;
   editingId: number | null;
   editText: string;
   dragId: number | null;
@@ -76,6 +77,7 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
 export default function TreeNode({
   node,
   selectedId,
+  selectedIds,
   editingId,
   editText,
   dragId,
@@ -93,6 +95,7 @@ export default function TreeNode({
   onDragEnd,
 }: TreeNodeProps) {
   const isSelected = selectedId === node.id;
+  const isMultiSelected = !isSelected && (selectedIds?.has(node.id) ?? false);
   const isEditing = editingId === node.id;
   const isDragging = dragId === node.id;
   const hasChildren = node.children.length > 0;
@@ -178,7 +181,9 @@ export default function TreeNode({
             ? "opacity-40"
             : isSelected
               ? "bg-blue-100 dark:bg-blue-900/30"
-              : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              : isMultiSelected
+                ? "bg-blue-50 dark:bg-blue-900/15"
+                : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
         } ${dropPosition === "child" ? "ring-2 ring-blue-400" : ""}`}
         style={{ marginLeft: `${node.indent * 12 + 16}px` }}
         onClick={() => onSelect(node.id)}
@@ -275,6 +280,7 @@ export default function TreeNode({
             key={child.id}
             node={child}
             selectedId={selectedId}
+            selectedIds={selectedIds}
             editingId={editingId}
             editText={editText}
             dragId={dragId}
