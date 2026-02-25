@@ -183,7 +183,7 @@ export default function TreeNode({
               ? "bg-blue-100 dark:bg-blue-900/30"
               : isMultiSelected
                 ? "bg-blue-50 dark:bg-blue-900/15"
-                : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                : ""
         } ${dropPosition === "child" ? "ring-2 ring-blue-400" : ""}`}
         style={{ marginLeft: `${node.indent * 12 + 16}px` }}
         onClick={() => onSelect(node.id)}
