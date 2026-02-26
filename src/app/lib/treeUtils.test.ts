@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   filterTree, copyNode, pasteNode, findNode, nextId, moveNode,
   addSiblingBefore, addChildNodeFirst, treeToText, textToTree, treeToMarkdown, toggleOl,
-  countAllNodes, getSiblingRange, deleteNodes,
+  countAllNodes, getSiblingRange, deleteNodes, markdownToTree,
 } from "./treeUtils";
 import { TreeNodeData } from "../components/TreeNode";
 
@@ -396,6 +396,121 @@ describe("deleteNodes（複数ノード一括削除）", () => {
   it("空Setなら何も削除されない", () => {
     const result = deleteNodes(testTree, new Set());
     expect(countAllNodes(result)).toBe(7);
+  });
+});
+
+describe("markdownToTree（Markdownインポート）", () => {
+  it("empty input returns empty", () => {
+    const { nodes, nextId } = markdownToTree("", 1, 2);
+    expect(nodes).toHaveLength(0);
+    expect(nextId).toBe(1);
+  });
+
+  it("blank lines only returns empty", () => {
+    const { nodes } = markdownToTree("\n\n  \n", 1, 2);
+    expect(nodes).toHaveLength(0);
+  });
+
+  it("headings only: depth based on # count", () => {
+    const md = "# Title\n## Section\n### Sub";
+    const { nodes } = markdownToTree(md, 1, 2);
+    // # = depth 0 → indent 2, ## = depth 1 → indent 3, ### = depth 2 → indent 4
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].text).toBe("Title");
+    expect(nodes[0].indent).toBe(2);
+    expect(nodes[0].children).toHaveLength(1);
+    expect(nodes[0].children[0].text).toBe("Section");
+    expect(nodes[0].children[0].indent).toBe(3);
+    expect(nodes[0].children[0].children[0].text).toBe("Sub");
+    expect(nodes[0].children[0].children[0].indent).toBe(4);
+  });
+
+  it("list only: depth based on indentation", () => {
+    const md = "- A\n  - B\n  - C\n- D";
+    const { nodes } = markdownToTree(md, 1, 2);
+    expect(nodes).toHaveLength(2);
+    expect(nodes[0].text).toBe("A");
+    expect(nodes[0].indent).toBe(2);
+    expect(nodes[0].children).toHaveLength(2);
+    expect(nodes[0].children[0].text).toBe("B");
+    expect(nodes[0].children[1].text).toBe("C");
+    expect(nodes[1].text).toBe("D");
+  });
+
+  it("mixed: heading + list items", () => {
+    const md = "# Heading\n\n- Item A\n  - Child 1\n  - Child 2\n- Item B";
+    const { nodes } = markdownToTree(md, 1, 3);
+    // Heading depth 0 → indent 3
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].text).toBe("Heading");
+    expect(nodes[0].indent).toBe(3);
+    // List items: headingDepth(0) + 1 + 0 = 1 → indent 4
+    expect(nodes[0].children).toHaveLength(2);
+    expect(nodes[0].children[0].text).toBe("Item A");
+    expect(nodes[0].children[0].indent).toBe(4);
+    // Nested list: headingDepth(0) + 1 + 1 = 2 → indent 5
+    expect(nodes[0].children[0].children).toHaveLength(2);
+    expect(nodes[0].children[0].children[0].text).toBe("Child 1");
+    expect(nodes[0].children[0].children[0].indent).toBe(5);
+    expect(nodes[0].children[1].text).toBe("Item B");
+  });
+
+  it("ordered list items are parsed", () => {
+    const md = "1. First\n2. Second\n3. Third";
+    const { nodes } = markdownToTree(md, 10, 1);
+    expect(nodes).toHaveLength(3);
+    expect(nodes[0].text).toBe("First");
+    expect(nodes[0].id).toBe(10);
+    expect(nodes[1].text).toBe("Second");
+    expect(nodes[2].text).toBe("Third");
+  });
+
+  it("plain text becomes child of heading", () => {
+    const md = "# Title\n\nSome paragraph text\n\n## Section";
+    const { nodes } = markdownToTree(md, 1, 2);
+    // "Title" depth 0, "Some paragraph text" depth 1 → child of Title
+    // "Section" depth 1 → sibling of paragraph
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].text).toBe("Title");
+    expect(nodes[0].children).toHaveLength(2);
+    expect(nodes[0].children[0].text).toBe("Some paragraph text");
+    expect(nodes[0].children[1].text).toBe("Section");
+  });
+
+  it("horizontal rules are skipped", () => {
+    const md = "# Title\n\n---\n\n- Item";
+    const { nodes } = markdownToTree(md, 1, 2);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].text).toBe("Title");
+    expect(nodes[0].children).toHaveLength(1);
+    expect(nodes[0].children[0].text).toBe("Item");
+  });
+
+  it("IDs are assigned sequentially", () => {
+    const md = "- A\n- B\n- C";
+    const { nodes, nextId } = markdownToTree(md, 100, 1);
+    expect(nodes[0].id).toBe(100);
+    expect(nodes[1].id).toBe(101);
+    expect(nodes[2].id).toBe(102);
+    expect(nextId).toBe(103);
+  });
+
+  it("asterisk list markers work", () => {
+    const md = "* Alpha\n* Beta";
+    const { nodes } = markdownToTree(md, 1, 1);
+    expect(nodes).toHaveLength(2);
+    expect(nodes[0].text).toBe("Alpha");
+    expect(nodes[1].text).toBe("Beta");
+  });
+
+  it("deeply nested lists", () => {
+    const md = "- L0\n  - L1\n    - L2\n      - L3";
+    const { nodes } = markdownToTree(md, 1, 1);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].text).toBe("L0");
+    expect(nodes[0].children[0].text).toBe("L1");
+    expect(nodes[0].children[0].children[0].text).toBe("L2");
+    expect(nodes[0].children[0].children[0].children[0].text).toBe("L3");
   });
 });
 

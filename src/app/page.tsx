@@ -28,12 +28,13 @@ import {
   treeToText,
   textToTree,
   treeToMarkdown,
+  markdownToTree,
   toggleOl,
   getSiblingRange,
 } from "./lib/treeUtils";
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
-type ModalType = "import" | "export" | "markdown" | null;
+type ModalType = "import" | "export" | "markdown" | "import-md" | null;
 type UndoEntry = { nodes: TreeNodeData[]; selectedId: number | null };
 
 export default function Home() {
@@ -730,6 +731,37 @@ export default function Home() {
     setModalText("");
   }, [modalText, nodes, update]);
 
+  // MD Import handler
+  const handleImportMd = useCallback(() => {
+    setModalText("");
+    setModal("import-md");
+  }, []);
+
+  const handleImportMdConfirm = useCallback(() => {
+    if (!modalText.trim() || selectedId === null) {
+      setModal(null);
+      return;
+    }
+    const parent = findNode(nodes, selectedId);
+    if (!parent) {
+      setModal(null);
+      return;
+    }
+    const startIdVal = nextId(nodes);
+    const { nodes: imported } = markdownToTree(modalText, startIdVal, parent.indent + 1);
+    if (imported.length > 0) {
+      const newNodes = JSON.parse(JSON.stringify(nodes)) as TreeNodeData[];
+      const targetParent = findNode(newNodes, selectedId);
+      if (targetParent) {
+        targetParent.closed = false;
+        targetParent.children.push(...imported);
+        update(newNodes);
+      }
+    }
+    setModal(null);
+    setModalText("");
+  }, [modalText, nodes, selectedId, update]);
+
   // Restore from backup
   const handleLoadBackups = useCallback(() => {
     fetch("/api/tree/restore")
@@ -837,11 +869,19 @@ export default function Home() {
           </button>
           <button
             className="rounded border border-zinc-300 px-2 py-0.5 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800 disabled:opacity-40"
+            onClick={handleImportMd}
+            disabled={selectedId === null}
+            title="Import Markdown as children of selected node"
+          >
+            MD Import
+          </button>
+          <button
+            className="rounded border border-zinc-300 px-2 py-0.5 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800 disabled:opacity-40"
             onClick={handleMarkdown}
             disabled={selectedId === null}
             title="Export selected node as Markdown"
           >
-            MD
+            MD Export
           </button>
           <button
             className="rounded border border-zinc-300 px-2 py-0.5 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
@@ -929,13 +969,14 @@ export default function Home() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="w-[600px] max-h-[80vh] rounded-lg bg-white p-4 shadow-xl dark:bg-zinc-900">
             <h2 className="mb-2 text-sm font-semibold">
-              {modal === "import" ? "Import" : modal === "export" ? "Export" : "Markdown"}
+              {modal === "import" ? "Import" : modal === "export" ? "Export" : modal === "import-md" ? "MD Import" : "Markdown"}
             </h2>
             <textarea
               className="w-full h-64 rounded border border-zinc-300 bg-zinc-50 p-2 text-xs font-mono outline-none focus:border-blue-400 dark:border-zinc-700 dark:bg-zinc-800"
               value={modalText}
               onChange={(e) => setModalText(e.target.value)}
-              readOnly={modal !== "import"}
+              readOnly={modal !== "import" && modal !== "import-md"}
+              placeholder={modal === "import-md" ? "Paste Markdown here...\n\n# Heading\n- Item 1\n  - Sub item\n- Item 2" : undefined}
               autoFocus
             />
             <div className="mt-2 flex justify-end gap-2">
@@ -943,6 +984,14 @@ export default function Home() {
                 <button
                   className="rounded bg-blue-500 px-3 py-1 text-xs text-white hover:bg-blue-600"
                   onClick={handleImportConfirm}
+                >
+                  Import
+                </button>
+              )}
+              {modal === "import-md" && (
+                <button
+                  className="rounded bg-blue-500 px-3 py-1 text-xs text-white hover:bg-blue-600"
+                  onClick={handleImportMdConfirm}
                 >
                   Import
                 </button>

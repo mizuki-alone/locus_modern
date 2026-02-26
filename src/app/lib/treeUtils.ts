@@ -527,6 +527,102 @@ export function treeToMarkdown(
   return result;
 }
 
+/** Parse Markdown into tree nodes */
+export function markdownToTree(
+  md: string,
+  startId: number,
+  baseIndent: number
+): { nodes: TreeNodeData[]; nextId: number } {
+  const lines = md.split("\n");
+  if (lines.length === 0) return { nodes: [], nextId: startId };
+
+  // Parse each line into flat items with depth
+  const items: { text: string; depth: number }[] = [];
+  let lastHeadingDepth = -1;
+
+  for (const line of lines) {
+    // Skip empty lines and horizontal rules
+    if (line.trim() === "") continue;
+    if (/^[-*_]{3,}\s*$/.test(line.trim())) continue;
+
+    // Heading: # ~ ######
+    const headingMatch = line.match(/^(#{1,6})\s+(.*)/);
+    if (headingMatch) {
+      const depth = headingMatch[1].length - 1; // # = 0, ## = 1, ...
+      lastHeadingDepth = depth;
+      items.push({ text: headingMatch[2].trim(), depth });
+      continue;
+    }
+
+    // Unordered list: - or *
+    const ulMatch = line.match(/^(\s*)[-*]\s+(.*)/);
+    if (ulMatch) {
+      const spaces = ulMatch[1].length;
+      const listIndent = Math.floor(spaces / 2);
+      const depth = lastHeadingDepth >= 0
+        ? lastHeadingDepth + 1 + listIndent
+        : listIndent;
+      items.push({ text: ulMatch[2].trim(), depth });
+      continue;
+    }
+
+    // Ordered list: 1. 2. etc.
+    const olMatch = line.match(/^(\s*)\d+\.\s+(.*)/);
+    if (olMatch) {
+      const spaces = olMatch[1].length;
+      const listIndent = Math.floor(spaces / 2);
+      const depth = lastHeadingDepth >= 0
+        ? lastHeadingDepth + 1 + listIndent
+        : listIndent;
+      items.push({ text: olMatch[2].trim(), depth });
+      continue;
+    }
+
+    // Plain text: child of last heading, or depth 0 if no heading
+    const depth = lastHeadingDepth >= 0 ? lastHeadingDepth + 1 : 0;
+    items.push({ text: line.trim(), depth });
+  }
+
+  if (items.length === 0) return { nodes: [], nextId: startId };
+
+  // Build tree from flat items
+  let idCounter = startId;
+
+  function buildLevel(startIdx: number, parentDepth: number): { nodes: TreeNodeData[]; nextIdx: number } {
+    const result: TreeNodeData[] = [];
+    let i = startIdx;
+
+    while (i < items.length) {
+      if (items[i].depth <= parentDepth && i > startIdx) break;
+      if (items[i].depth < parentDepth) break;
+
+      const node: TreeNodeData = {
+        id: idCounter++,
+        text: items[i].text,
+        indent: baseIndent + items[i].depth,
+        closed: false,
+        children: [],
+      };
+
+      const childStart = i + 1;
+      if (childStart < items.length && items[childStart].depth > items[i].depth) {
+        const childResult = buildLevel(childStart, items[i].depth);
+        node.children = childResult.nodes;
+        i = childResult.nextIdx;
+      } else {
+        i++;
+      }
+      result.push(node);
+    }
+
+    return { nodes: result, nextIdx: i };
+  }
+
+  const minDepth = Math.min(...items.map((it) => it.depth));
+  const { nodes } = buildLevel(0, minDepth - 1);
+  return { nodes, nextId: idCounter };
+}
+
 /** Count all nodes in the tree recursively */
 export function countAllNodes(nodes: TreeNodeData[]): number {
   let count = 0;
