@@ -212,6 +212,12 @@ export default function TreeNode({
           />
         )}
 
+        {node.ol && (
+          <span className="absolute -left-5 top-1/2 -translate-y-1/2 px-0.5 text-[9px] leading-3 rounded border border-zinc-300 dark:border-zinc-600 text-zinc-400 dark:text-zinc-500 select-none">
+            OL
+          </span>
+        )}
+
         {hasChildren ? (
           <span
             className="shrink-0 text-zinc-400 cursor-pointer flex items-center justify-center"
@@ -238,7 +244,7 @@ export default function TreeNode({
         )}
 
         {bullet && (
-          <span className="shrink-0 text-zinc-400 tabular-nums mr-0.5">{bullet}</span>
+          <span className="shrink-0 text-zinc-400 tabular-nums mr-1">{bullet}</span>
         )}
 
         {isEditing ? (
@@ -272,6 +278,7 @@ export default function TreeNode({
             )}
           </span>
         )}
+
       </div>
 
       {!node.closed &&

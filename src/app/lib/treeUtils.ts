@@ -536,8 +536,8 @@ export function markdownToTree(
   const lines = md.split("\n");
   if (lines.length === 0) return { nodes: [], nextId: startId };
 
-  // Parse each line into flat items with depth
-  const items: { text: string; depth: number }[] = [];
+  // Parse each line into flat items with depth and list type
+  const items: { text: string; depth: number; ol?: boolean }[] = [];
   let lastHeadingDepth = -1;
 
   for (const line of lines) {
@@ -574,7 +574,7 @@ export function markdownToTree(
       const depth = lastHeadingDepth >= 0
         ? lastHeadingDepth + 1 + listIndent
         : listIndent;
-      items.push({ text: olMatch[2].trim(), depth });
+      items.push({ text: olMatch[2].trim(), depth, ol: true });
       continue;
     }
 
@@ -606,6 +606,10 @@ export function markdownToTree(
 
       const childStart = i + 1;
       if (childStart < items.length && items[childStart].depth > items[i].depth) {
+        // Check if child items are from an ordered list
+        if (items[childStart].ol) {
+          node.ol = true;
+        }
         const childResult = buildLevel(childStart, items[i].depth);
         node.children = childResult.nodes;
         i = childResult.nextIdx;
