@@ -34,7 +34,8 @@ import {
 } from "./lib/treeUtils";
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
-type ModalType = "import" | "export" | "markdown" | "import-md" | null;
+type ModalType = "import" | "export" | "markdown" | "import-md" | "shortcuts" | null;
+type ThemeMode = "dark" | "light";
 type UndoEntry = { nodes: TreeNodeData[]; selectedId: number | null };
 
 export default function Home() {
@@ -71,6 +72,7 @@ export default function Home() {
   const [showBackups, setShowBackups] = useState(false);
   const [editOnAdd, setEditOnAdd] = useState(true);
   const prevCountRef = useRef<number | null>(null);
+  const [theme, setTheme] = useState<ThemeMode>("light");
 
   const saveTree = useCallback((data: TreeNodeData[]) => {
     setSaveStatus("saving");
@@ -105,6 +107,32 @@ export default function Home() {
         }
       })
       .catch((err) => setError(err.message));
+  }, []);
+
+  // Theme: load from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem("theme");
+    if (saved === "dark" || saved === "light") {
+      setTheme(saved);
+    }
+  }, []);
+
+  // Theme: apply dark class to <html>
+  useEffect(() => {
+    const html = document.documentElement;
+    if (theme === "dark") {
+      html.classList.add("dark");
+    } else {
+      html.classList.remove("dark");
+    }
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => {
+      const next: ThemeMode = prev === "light" ? "dark" : "light";
+      localStorage.setItem("theme", next);
+      return next;
+    });
   }, []);
 
   const UNDO_LIMIT = 50;
@@ -222,6 +250,13 @@ export default function Home() {
 
       // Don't handle keys when modal is open
       if (modal) return;
+
+      // ? key: show shortcuts help
+      if (e.key === "?" && !e.ctrlKey && !e.altKey && editingId === null) {
+        e.preventDefault();
+        setModal("shortcuts");
+        return;
+      }
 
       // Undo/Redo works even during editing
       const key = e.key.toLowerCase();
@@ -804,7 +839,7 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-white dark:bg-zinc-950 dark:text-zinc-100" style={{ color: "#333" }}>
+    <div className="min-h-screen bg-white text-zinc-800 dark:bg-zinc-900 dark:text-zinc-100">
       <div className="mx-auto max-w-3xl py-4">
         <div className="flex items-center justify-between px-4 pb-3">
           <h1 className="text-lg font-semibold">Locus</h1>
@@ -890,6 +925,20 @@ export default function Home() {
           >
             Restore
           </button>
+          <button
+            className="rounded border border-zinc-300 px-2 py-0.5 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+            onClick={() => setModal("shortcuts")}
+            title="Keyboard shortcuts (?)"
+          >
+            ?
+          </button>
+          <button
+            className="w-7 rounded border border-zinc-300 py-0.5 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800 text-center"
+            onClick={toggleTheme}
+            title={`Theme: ${theme}`}
+          >
+            {theme === "dark" ? "\u263D" : "\u2600"}
+          </button>
           <label className="ml-2 flex items-center gap-1 cursor-pointer select-none" title="Toggle edit mode on add (Enter/Tab)">
             <input
               type="checkbox"
@@ -967,55 +1016,121 @@ export default function Home() {
       {/* Modal */}
       {modal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-[600px] max-h-[80vh] rounded-lg bg-white p-4 shadow-xl dark:bg-zinc-900">
-            <h2 className="mb-2 text-sm font-semibold">
-              {modal === "import" ? "Import" : modal === "export" ? "Export" : modal === "import-md" ? "MD Import" : "Markdown"}
-            </h2>
-            <textarea
-              className="w-full h-64 rounded border border-zinc-300 bg-zinc-50 p-2 text-xs font-mono outline-none focus:border-blue-400 dark:border-zinc-700 dark:bg-zinc-800"
-              value={modalText}
-              onChange={(e) => setModalText(e.target.value)}
-              readOnly={modal !== "import" && modal !== "import-md"}
-              placeholder={modal === "import-md" ? "Paste Markdown here...\n\n# Heading\n- Item 1\n  - Sub item\n- Item 2" : undefined}
-              autoFocus
-            />
-            <div className="mt-2 flex justify-end gap-2">
-              {modal === "import" && (
-                <button
-                  className="rounded bg-blue-500 px-3 py-1 text-xs text-white hover:bg-blue-600"
-                  onClick={handleImportConfirm}
-                >
-                  Import
-                </button>
-              )}
-              {modal === "import-md" && (
-                <button
-                  className="rounded bg-blue-500 px-3 py-1 text-xs text-white hover:bg-blue-600"
-                  onClick={handleImportMdConfirm}
-                >
-                  Import
-                </button>
-              )}
-              {(modal === "export" || modal === "markdown") && (
-                <button
-                  className="rounded bg-blue-500 px-3 py-1 text-xs text-white hover:bg-blue-600"
-                  onClick={() => {
-                    navigator.clipboard.writeText(modalText);
-                  }}
-                >
-                  Copy
-                </button>
-              )}
-              <button
-                className="rounded border border-zinc-300 px-3 py-1 text-xs hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
-                onClick={() => {
-                  setModal(null);
-                  setModalText("");
-                }}
-              >
-                Close
-              </button>
-            </div>
+          <div className="w-[600px] max-h-[80vh] rounded-lg bg-white p-4 shadow-xl dark:bg-zinc-900 overflow-y-auto">
+            {modal === "shortcuts" ? (
+              <>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-sm font-semibold">Keyboard Shortcuts</h2>
+                  <button
+                    className="rounded border border-zinc-300 px-3 py-1 text-xs hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                    onClick={() => setModal(null)}
+                  >
+                    Close
+                  </button>
+                </div>
+                {([
+                  ["Navigation", [
+                    ["\u2191 / \u2193", "Move selection"],
+                    ["Shift+\u2191 / \u2193", "Range select siblings"],
+                    ["\u2192", "Expand / move to first child"],
+                    ["\u2190", "Collapse / move to parent"],
+                    ["Home", "Jump to first node"],
+                    ["End", "Jump to last node"],
+                    ["PageUp / PageDown", "Move by page"],
+                    ["Ctrl+\u2191 / \u2193", "Scroll without moving"],
+                    ["Ctrl+F", "Search"],
+                  ]],
+                  ["Editing", [
+                    ["F2 / Space", "Edit node"],
+                    ["Ctrl+Enter", "Confirm edit"],
+                    ["Escape", "Cancel / clear"],
+                  ]],
+                  ["Structure", [
+                    ["Enter", "Add sibling after"],
+                    ["Shift+Enter", "Add sibling before"],
+                    ["Tab", "Add child (end)"],
+                    ["Shift+Tab", "Add child (start)"],
+                    ["Delete", "Delete node(s)"],
+                    ["Alt+\u2191 / \u2193", "Move node up/down"],
+                    ["Alt+\u2192 / \u2190", "Indent / Outdent"],
+                  ]],
+                  ["Clipboard", [
+                    ["Ctrl+C", "Copy"],
+                    ["Ctrl+X", "Cut"],
+                    ["Ctrl+V", "Paste"],
+                  ]],
+                  ["Other", [
+                    ["Ctrl+Z", "Undo"],
+                    ["Ctrl+Y", "Redo"],
+                    ["Ctrl+Shift+L", "Toggle OL"],
+                    ["?", "Show shortcuts"],
+                  ]],
+                ] as [string, [string, string][]][]).map(([category, shortcuts]) => (
+                  <div key={category} className="mb-3">
+                    <h3 className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1">{category}</h3>
+                    <div className="grid grid-cols-[140px_1fr] gap-y-0.5 text-xs">
+                      {shortcuts.map(([key, desc]) => (
+                        <div key={key} className="contents">
+                          <kbd className="font-mono text-[11px] text-zinc-600 dark:text-zinc-300">{key}</kbd>
+                          <span className="text-zinc-700 dark:text-zinc-300">{desc}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </>
+            ) : (
+              <>
+                <h2 className="mb-2 text-sm font-semibold">
+                  {modal === "import" ? "Import" : modal === "export" ? "Export" : modal === "import-md" ? "MD Import" : "Markdown"}
+                </h2>
+                <textarea
+                  className="w-full h-64 rounded border border-zinc-300 bg-zinc-50 p-2 text-xs font-mono outline-none focus:border-blue-400 dark:border-zinc-700 dark:bg-zinc-800"
+                  value={modalText}
+                  onChange={(e) => setModalText(e.target.value)}
+                  readOnly={modal !== "import" && modal !== "import-md"}
+                  placeholder={modal === "import-md" ? "Paste Markdown here...\n\n# Heading\n- Item 1\n  - Sub item\n- Item 2" : undefined}
+                  autoFocus
+                />
+                <div className="mt-2 flex justify-end gap-2">
+                  {modal === "import" && (
+                    <button
+                      className="rounded bg-blue-500 px-3 py-1 text-xs text-white hover:bg-blue-600"
+                      onClick={handleImportConfirm}
+                    >
+                      Import
+                    </button>
+                  )}
+                  {modal === "import-md" && (
+                    <button
+                      className="rounded bg-blue-500 px-3 py-1 text-xs text-white hover:bg-blue-600"
+                      onClick={handleImportMdConfirm}
+                    >
+                      Import
+                    </button>
+                  )}
+                  {(modal === "export" || modal === "markdown") && (
+                    <button
+                      className="rounded bg-blue-500 px-3 py-1 text-xs text-white hover:bg-blue-600"
+                      onClick={() => {
+                        navigator.clipboard.writeText(modalText);
+                      }}
+                    >
+                      Copy
+                    </button>
+                  )}
+                  <button
+                    className="rounded border border-zinc-300 px-3 py-1 text-xs hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                    onClick={() => {
+                      setModal(null);
+                      setModalText("");
+                    }}
+                  >
+                    Close
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
