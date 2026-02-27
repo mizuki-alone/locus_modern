@@ -118,7 +118,6 @@ export default function Home() {
   // Theme: load from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem("theme");
-    console.log("[Theme] load from localStorage:", saved);
     if (saved === "dark" || saved === "light") {
       setTheme(saved);
     }
@@ -127,20 +126,16 @@ export default function Home() {
   // Theme: apply dark class to <html>
   useEffect(() => {
     const html = document.documentElement;
-    console.log("[Theme] applying theme:", theme);
     if (theme === "dark") {
       html.classList.add("dark");
     } else {
       html.classList.remove("dark");
     }
-    console.log("[Theme] <html> classList:", html.className);
-    console.log("[Theme] computed bg:", getComputedStyle(document.body).backgroundColor);
   }, [theme]);
 
   const toggleTheme = useCallback(() => {
     setTheme((prev) => {
       const next: ThemeMode = prev === "light" ? "dark" : "light";
-      console.log("[Theme] toggle:", prev, "→", next);
       localStorage.setItem("theme", next);
       return next;
     });
