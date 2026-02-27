@@ -17,6 +17,7 @@
 .dark {
   --background: #18181b;
   --foreground: #f4f4f5;
+  color-scheme: dark;
 }
 
 body {

@@ -50,6 +50,12 @@ export default function Home() {
   const [editText, setEditText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchIndex, setSearchIndexRaw] = useState<number | null>(null);
+  const searchIndexRef = useRef<number | null>(null);
+  const setSearchIndex = useCallback((idx: number | null) => {
+    searchIndexRef.current = idx;
+    setSearchIndexRaw(idx);
+  }, []);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const undoStack = useRef<UndoEntry[]>([]);
   const redoStack = useRef<UndoEntry[]>([]);
@@ -227,20 +233,59 @@ export default function Home() {
 
   const nodeCount = useMemo(() => countAllNodes(nodes), [nodes]);
 
-  // Count search hits
-  const searchHitCount = useMemo(() => {
-    if (!searchQuery) return 0;
+  // Collect search-matching node IDs in display order
+  const searchMatchIds = useMemo(() => {
+    if (!searchQuery) return [];
     const lowerQuery = searchQuery.toLowerCase();
-    let count = 0;
+    const matchSet = new Set<number>();
     function walk(list: TreeNodeData[]) {
       for (const node of list) {
-        if (node.text.toLowerCase().includes(lowerQuery)) count++;
+        if (node.text.toLowerCase().includes(lowerQuery)) matchSet.add(node.id);
         walk(node.children);
       }
     }
     walk(nodes);
-    return count;
-  }, [nodes, searchQuery]);
+    const visible = flattenVisible(displayNodes);
+    return visible.filter(n => matchSet.has(n.id)).map(n => n.id);
+  }, [nodes, searchQuery, displayNodes]);
+
+  const searchHitCount = searchMatchIds.length;
+
+  // Navigate to next/prev search match
+  const navigateSearch = useCallback((direction: 1 | -1) => {
+    if (searchMatchIds.length === 0) return;
+    const current = searchIndexRef.current ?? -1;
+    let newIdx = current + direction;
+    if (newIdx >= searchMatchIds.length) newIdx = 0;
+    if (newIdx < 0) newIdx = searchMatchIds.length - 1;
+    setSearchIndex(newIdx);
+    setSelectedId(searchMatchIds[newIdx]);
+  }, [searchMatchIds, setSearchIndex, setSelectedId]);
+
+  // Auto-select first match when search query changes
+  useEffect(() => {
+    if (!searchQuery) {
+      setSearchIndex(null);
+      return;
+    }
+    if (searchMatchIds.length > 0) {
+      setSearchIndex(0);
+      setSelectedId(searchMatchIds[0]);
+    } else {
+      setSearchIndex(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery]);
+
+  // Sync searchIndex when selectedId changes via arrow keys or click
+  useEffect(() => {
+    if (!searchQuery || searchMatchIds.length === 0 || selectedId === null) return;
+    const idx = searchMatchIds.indexOf(selectedId);
+    if (idx !== -1 && idx !== searchIndexRef.current) {
+      setSearchIndex(idx);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -322,6 +367,24 @@ export default function Home() {
 
       // Don't handle other keys while editing (input handles its own keys)
       if (editingId !== null) return;
+
+      // F3 / Ctrl+G: next search match
+      if ((e.key === "F3" && !e.shiftKey) || (key === "g" && e.ctrlKey && !e.shiftKey)) {
+        if (searchQuery && searchMatchIds.length > 0) {
+          e.preventDefault();
+          navigateSearch(1);
+          return;
+        }
+      }
+
+      // Shift+F3 / Ctrl+Shift+G: previous search match
+      if ((e.key === "F3" && e.shiftKey) || (key === "g" && e.ctrlKey && e.shiftKey)) {
+        if (searchQuery && searchMatchIds.length > 0) {
+          e.preventDefault();
+          navigateSearch(-1);
+          return;
+        }
+      }
 
       const visible = flattenVisible(displayNodes);
       if (visible.length === 0) return;
@@ -673,7 +736,7 @@ export default function Home() {
         }
       }
     },
-    [nodes, editingId, editOnAdd, startEdit, update, undo, redo, searchQuery, displayNodes, modal, setSelectedId]
+    [nodes, editingId, editOnAdd, startEdit, update, undo, redo, searchQuery, displayNodes, modal, setSelectedId, navigateSearch, searchMatchIds]
   );
 
   useEffect(() => {
@@ -866,7 +929,7 @@ export default function Home() {
                 ref={searchInputRef}
                 type="text"
                 placeholder="Search (Ctrl+F)"
-                className="w-48 rounded border border-zinc-300 bg-transparent px-2 py-1 text-xs outline-none focus:border-blue-400 dark:border-zinc-700"
+                className="w-48 rounded border border-zinc-300 bg-white px-2 py-1 text-xs outline-none focus:border-blue-400 dark:border-zinc-700 dark:bg-zinc-800"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
@@ -875,11 +938,18 @@ export default function Home() {
                     searchInputRef.current?.blur();
                     e.stopPropagation();
                   }
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    navigateSearch(e.shiftKey ? -1 : 1);
+                  }
                 }}
               />
               {searchQuery && (
                 <span className="text-xs text-zinc-400 whitespace-nowrap">
-                  {searchHitCount} found
+                  {searchHitCount > 0 && searchIndex !== null
+                    ? `${searchIndex + 1} / ${searchHitCount}`
+                    : `0 / 0`}
                 </span>
               )}
             </div>
@@ -1039,6 +1109,8 @@ export default function Home() {
                     ["PageUp / PageDown", "Move by page"],
                     ["Ctrl+\u2191 / \u2193", "Scroll without moving"],
                     ["Ctrl+F", "Search"],
+                    ["Enter / Shift+Enter", "Next/prev match (in search)"],
+                    ["F3 / Shift+F3", "Next/prev match"],
                   ]],
                   ["Editing", [
                     ["F2 / Space", "Edit node"],
