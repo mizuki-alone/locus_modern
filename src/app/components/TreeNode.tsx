@@ -325,6 +325,16 @@ export default function TreeNode({
                 return;
               }
 
+              // Ctrl+M: let bubble for markdown export
+              if (e.ctrlKey && e.key === "m") {
+                return;
+              }
+
+              // Ctrl+ArrowUp/Down: let bubble for scroll
+              if (e.ctrlKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+                return;
+              }
+
               // Ctrl+C: tree-level copy (only when no text is selected)
               if (e.ctrlKey && e.key === "c") {
                 const ta = e.currentTarget as HTMLTextAreaElement;

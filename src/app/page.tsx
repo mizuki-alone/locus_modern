@@ -32,7 +32,6 @@ import {
   treeToMarkdown,
   markdownToTree,
   toggleOl,
-  getSiblingRange,
   mergeNodes,
 } from "./lib/treeUtils";
 
@@ -85,6 +84,7 @@ export default function Home() {
   const selectionAnchorRef = useRef<number | null>(null);
   const [modal, setModal] = useState<ModalType>(null);
   const [modalText, setModalText] = useState("");
+  const modalReturnIdRef = useRef<number | null>(null);
   const [backups, setBackups] = useState<{ name: string; mtime: string }[]>([]);
   const [showBackups, setShowBackups] = useState(false);
   const [editOnAdd, setEditOnAdd] = useState(true);
@@ -272,6 +272,24 @@ export default function Home() {
 
   const splitEdit = useCallback((before: string, after: string) => {
     if (editingId === null) return;
+    const currentNode = findNode(nodes, editingId);
+    if (!currentNode) return;
+
+    // At position 0 with children: insert empty sibling before, keep current node intact
+    if (before === "" && currentNode.children.length > 0) {
+      const newId = nextId(nodes);
+      const result = addSiblingBefore(nodes, editingId, newId);
+      if (!result) return;
+      update(result.tree);
+      // Stay on current node
+      cursorPositionRef.current = 0;
+      setSelectedId(editingId);
+      setEditingId(editingId);
+      setEditText(after);
+      return;
+    }
+
+    // Normal split
     // Update current node text to 'before'
     let tree = updateNodeText(nodes, editingId, before);
     // Add sibling after current node
@@ -472,9 +490,12 @@ export default function Home() {
 
     const newId = visible[newIndex].id;
 
-    // Compute sibling range — if out of sibling scope, don't move
-    const range = getSiblingRange(nodes, selectionAnchorRef.current, newId);
-    if (!range) return;
+    // Select all visible nodes between anchor and new position
+    const anchorIndex = visible.findIndex(n => n.id === selectionAnchorRef.current);
+    const newNodeIndex = visible.findIndex(n => n.id === newId);
+    const start = Math.min(anchorIndex, newNodeIndex);
+    const end = Math.max(anchorIndex, newNodeIndex);
+    const range = visible.slice(start, end + 1).map(n => n.id);
 
     setSelectedId(newId);
     setSelectedIdsWrapped(new Set(range));
@@ -661,6 +682,18 @@ export default function Home() {
         return;
       }
 
+      // Ctrl+M: markdown export
+      if (e.key.toLowerCase() === "m" && e.ctrlKey && selectedId !== null) {
+        e.preventDefault();
+        const node = findNode(nodes, selectedId);
+        if (node) {
+          modalReturnIdRef.current = selectedId;
+          setModalText(treeToMarkdown(node));
+          setModal("markdown");
+        }
+        return;
+      }
+
       // Undo/Redo works even during editing
       const key = e.key.toLowerCase();
       if (key === "z" && e.ctrlKey && !e.shiftKey) {
@@ -815,6 +848,17 @@ export default function Home() {
         addOriginRef.current = selectedId;
         startEdit(newId, 0);
         setEditText("");
+        return;
+      }
+
+      // Ctrl+Arrow Up/Down: scroll view without changing selection (works during editing)
+      if ((e.key === "ArrowUp" || e.key === "ArrowDown") && e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        const nodeEl = selectedId !== null
+          ? document.querySelector(`[data-node-id="${selectedId}"]`)
+          : null;
+        const scrollAmount = nodeEl ? nodeEl.getBoundingClientRect().height : 16;
+        window.scrollBy(0, e.key === "ArrowDown" ? scrollAmount : -scrollAmount);
         return;
       }
 
@@ -1069,47 +1113,6 @@ export default function Home() {
         return;
       }
 
-      // Arrow Right: expand or move to first child
-      if (e.key === "ArrowRight" && selectedId !== null) {
-        e.preventDefault();
-        const node = findNode(nodes, selectedId);
-        if (!node || node.children.length === 0) return;
-        if (node.closed) {
-          const newNodes = setNodeClosed(nodes, selectedId, false);
-          update(newNodes);
-        } else {
-          setSelectedId(node.children[0].id);
-        }
-        return;
-      }
-
-      // Arrow Left: collapse or move to parent
-      if (e.key === "ArrowLeft" && selectedId !== null) {
-        e.preventDefault();
-        const node = findNode(nodes, selectedId);
-        if (node && !node.closed && node.children.length > 0) {
-          const newNodes = setNodeClosed(nodes, selectedId, true);
-          update(newNodes);
-        } else {
-          const ctx = findParentContext(nodes, selectedId);
-          if (ctx?.parent) {
-            setSelectedId(ctx.parent.id);
-          }
-        }
-        return;
-      }
-
-      // Ctrl+Arrow Up/Down: scroll view without changing selection
-      if ((e.key === "ArrowUp" || e.key === "ArrowDown") && e.ctrlKey && !e.altKey) {
-        e.preventDefault();
-        const nodeEl = selectedId !== null
-          ? document.querySelector(`[data-node-id="${selectedId}"]`)
-          : null;
-        const scrollAmount = nodeEl ? nodeEl.getBoundingClientRect().height : 16;
-        window.scrollBy(0, e.key === "ArrowDown" ? scrollAmount : -scrollAmount);
-        return;
-      }
-
       // Arrow Up/Down: move selection (with optional Shift for range select)
       if (e.key === "ArrowUp" || e.key === "ArrowDown") {
         e.preventDefault();
@@ -1140,18 +1143,16 @@ export default function Home() {
           const newId = visible[newIndex].id;
 
           if (e.shiftKey) {
-            // Shift+Arrow: range selection among siblings
+            // Shift+Arrow: range selection across visible nodes
             if (selectionAnchorRef.current === null) {
               selectionAnchorRef.current = selectedId;
             }
-            const anchorId = selectionAnchorRef.current;
-
-            // Check if anchor and new selection are siblings — if not, stop
-            const range = getSiblingRange(nodes, anchorId, newId);
-            if (range) {
-              setSelectedId(newId);
-              setSelectedIdsWrapped(new Set(range));
-            }
+            const anchorIndex = visible.findIndex(n => n.id === selectionAnchorRef.current);
+            const start = Math.min(anchorIndex, newIndex);
+            const end = Math.max(anchorIndex, newIndex);
+            const range = visible.slice(start, end + 1).map(n => n.id);
+            setSelectedId(newId);
+            setSelectedIdsWrapped(new Set(range));
           } else {
             // Normal arrow: clear multi-selection
             setSelectedIdsWrapped(new Set());
@@ -1569,8 +1570,6 @@ export default function Home() {
                   ["Navigation", [
                     ["\u2191 / \u2193", "Move selection"],
                     ["Shift+\u2191 / \u2193", "Range select siblings"],
-                    ["\u2192", "Expand / move to first child"],
-                    ["\u2190", "Collapse / move to parent"],
                     ["Home", "Jump to first node"],
                     ["End", "Jump to last node"],
                     ["PageUp / PageDown", "Move by page"],
@@ -1630,7 +1629,7 @@ export default function Home() {
                   onChange={(e) => setModalText(e.target.value)}
                   readOnly={modal !== "import" && modal !== "import-md"}
                   placeholder={modal === "import-md" ? "Paste Markdown here...\n\n# Heading\n- Item 1\n  - Sub item\n- Item 2" : undefined}
-                  autoFocus
+                  autoFocus={modal === "import" || modal === "import-md"}
                 />
                 <div className="mt-2 flex justify-end gap-2">
                   {modal === "import" && (
@@ -1651,6 +1650,7 @@ export default function Home() {
                   )}
                   {(modal === "export" || modal === "markdown") && (
                     <button
+                      autoFocus
                       className="rounded bg-blue-500 px-3 py-1 text-xs text-white hover:bg-blue-600"
                       onClick={() => {
                         navigator.clipboard.writeText(modalText);
@@ -1662,8 +1662,20 @@ export default function Home() {
                   <button
                     className="rounded border border-zinc-300 px-3 py-1 text-xs hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
                     onClick={() => {
+                      const restoreId = modalReturnIdRef.current;
+                      modalReturnIdRef.current = null;
                       setModal(null);
                       setModalText("");
+                      if (restoreId !== null) {
+                        setSelectedId(restoreId);
+                        setEditingId(restoreId);
+                        const node = findNode(nodesRef.current, restoreId);
+                        if (node) setEditText(node.text);
+                        setTimeout(() => {
+                          const el = document.querySelector(`[data-node-id="${restoreId}"] textarea`) as HTMLTextAreaElement | null;
+                          el?.focus();
+                        }, 50);
+                      }
                     }}
                   >
                     Close

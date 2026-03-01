@@ -339,16 +339,63 @@ function reassignIds(node: TreeNodeData, startId: number): number {
   return nextIdVal;
 }
 
-/** Copy multiple nodes by IDs (preserving order from siblings array) */
+/** Copy multiple nodes by IDs.
+ * - If a selected node has no selected descendants: copy entire subtree
+ * - If a selected node has selected descendants: copy only selected children (recursively)
+ * - Nodes whose ancestor is already selected are included via their parent, not as separate entries
+ */
 export function copyNodes(
   nodes: TreeNodeData[],
   ids: Set<number>
 ): TreeNodeData[] {
-  const result: TreeNodeData[] = [];
-  for (const id of ids) {
-    const node = findNode(nodes, id);
-    if (node) result.push(cloneTree([node])[0]);
+  function hasSelectedDescendant(node: TreeNodeData): boolean {
+    for (const child of node.children) {
+      if (ids.has(child.id)) return true;
+      if (hasSelectedDescendant(child)) return true;
+    }
+    return false;
   }
+
+  function cloneFiltered(node: TreeNodeData): TreeNodeData {
+    if (!hasSelectedDescendant(node)) {
+      // No selected descendants: copy entire subtree
+      return cloneTree([node])[0];
+    }
+    // Has selected descendants: include only selected children (recursively)
+    const clone: TreeNodeData = {
+      id: node.id,
+      text: node.text,
+      indent: node.indent,
+      closed: node.closed,
+      children: [],
+    };
+    if (node.ol) clone.ol = true;
+    for (const child of node.children) {
+      if (ids.has(child.id)) {
+        clone.children.push(cloneFiltered(child));
+      }
+    }
+    return clone;
+  }
+
+  function hasSelectedAncestor(nodeId: number): boolean {
+    const ctx = findParentContext(nodes, nodeId);
+    if (!ctx || !ctx.parent) return false;
+    if (ids.has(ctx.parent.id)) return true;
+    return hasSelectedAncestor(ctx.parent.id);
+  }
+
+  const result: TreeNodeData[] = [];
+  function walk(list: TreeNodeData[]) {
+    for (const node of list) {
+      if (ids.has(node.id) && !hasSelectedAncestor(node.id)) {
+        result.push(cloneFiltered(node));
+      } else {
+        walk(node.children);
+      }
+    }
+  }
+  walk(nodes);
   return result;
 }
 
