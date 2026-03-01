@@ -362,35 +362,38 @@ export default function TreeNode({
                 return;
               }
 
-              // ArrowUp/Down: move within visual lines first, then navigate nodes
+              // Shift+ArrowUp/Down: text selection, then node selection at boundary
+              if ((e.key === "ArrowUp" || e.key === "ArrowDown") && e.shiftKey) {
+                const ta = e.currentTarget;
+                const isDown = e.key === "ArrowDown";
+                const atBoundary = isDown
+                  ? ta.selectionEnd === editText.length
+                  : ta.selectionStart === 0;
+                if (atBoundary) {
+                  e.preventDefault();
+                  onEditConfirm();
+                  onShiftBoundary(isDown ? 'down' : 'up');
+                }
+                e.stopPropagation();
+                return;
+              }
+
+              // ArrowUp/Down: navigate to adjacent node at text boundary
               if (e.key === "ArrowUp" || e.key === "ArrowDown") {
                 const ta = e.currentTarget;
-                const beforeStart = ta.selectionStart;
-                const beforeEnd = ta.selectionEnd;
                 const isDown = e.key === "ArrowDown";
-                const isShift = e.shiftKey;
-                // Let default textarea cursor/selection movement happen
-                e.stopPropagation();
-                requestAnimationFrame(() => {
-                  if (!textareaRef.current) return;
-                  const afterStart = textareaRef.current.selectionStart;
-                  const afterEnd = textareaRef.current.selectionEnd;
-                  if (afterStart === beforeStart && afterEnd === beforeEnd) {
-                    // Cursor/selection didn't move — at boundary
-                    if (!isShift) {
-                      // Navigate to adjacent node (only without Shift)
-                      if (isDown) {
-                        onMoveToNextStart();
-                      } else {
-                        onMoveToPreviousEnd(0);
-                      }
-                    } else {
-                      // Shift at boundary: exit edit, trigger multi-select
-                      onEditConfirm();
-                      onShiftBoundary(isDown ? 'down' : 'up');
-                    }
+                const atBoundary = isDown
+                  ? ta.selectionStart === editText.length && ta.selectionEnd === editText.length
+                  : ta.selectionStart === 0 && ta.selectionEnd === 0;
+                if (atBoundary) {
+                  e.preventDefault();
+                  if (isDown) {
+                    onMoveToNextStart();
+                  } else {
+                    onMoveToPreviousEnd(0);
                   }
-                });
+                }
+                e.stopPropagation();
                 return;
               }
 

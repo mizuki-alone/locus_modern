@@ -454,8 +454,16 @@ export default function Home() {
 
     setEditingId(null);
 
+    // First call from editing: just select current node, don't move yet
+    if (selectionAnchorRef.current === null) {
+      selectionAnchorRef.current = id;
+      setSelectedId(id);
+      setSelectedIdsWrapped(new Set([id]));
+      return;
+    }
+
     const visible = flattenVisible(displayNodes);
-    const currentIndex = visible.findIndex(n => n.id === id);
+    const currentIndex = visible.findIndex(n => n.id === selectedIdRef.current);
 
     const newIndex = direction === 'up'
       ? Math.max(0, currentIndex - 1)
@@ -463,11 +471,6 @@ export default function Home() {
     if (newIndex === currentIndex) return;
 
     const newId = visible[newIndex].id;
-
-    // Set anchor on first shift-select
-    if (selectionAnchorRef.current === null) {
-      selectionAnchorRef.current = id;
-    }
 
     // Compute sibling range — if out of sibling scope, don't move
     const range = getSiblingRange(nodes, selectionAnchorRef.current, newId);
