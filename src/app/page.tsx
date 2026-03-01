@@ -296,9 +296,21 @@ export default function Home() {
       if (editingIdRef.current === null) return;
       const currentId = editingIdRef.current;
 
-      // Only merge with previous sibling (not parent or unrelated node)
       const ctx = findParentContext(nodesRef.current, currentId);
-      if (!ctx || ctx.index <= 0) return;
+      if (!ctx) return;
+
+      // First child with empty text: delete and move to parent's end
+      if (ctx.index === 0 && text === "" && ctx.parent) {
+        const newNodes = deleteNode(nodesRef.current, currentId);
+        setEditingId(null);
+        update(newNodes);
+        setSelectedId(ctx.parent.id);
+        startEdit(ctx.parent.id, ctx.parent.text.length);
+        return;
+      }
+
+      // Only merge with previous sibling
+      if (ctx.index <= 0) return;
 
       const prevSibling = ctx.siblings[ctx.index - 1];
       const result = mergeNodes(nodesRef.current, prevSibling.id, currentId, prevSibling.text, text);
@@ -322,8 +334,9 @@ export default function Home() {
       const currentIndex = visible.findIndex((n) => n.id === currentId);
 
       // Empty text: delete current node
-      // Last child of parent → move to previous; otherwise → move to next
       if (text === "") {
+        // Last visible node — do nothing
+        if (currentIndex >= visible.length - 1) return;
         const ctx = findParentContext(nodesRef.current, currentId);
         const isLastChild = ctx && ctx.index === ctx.siblings.length - 1;
         const newNodes = deleteNode(nodesRef.current, currentId);
