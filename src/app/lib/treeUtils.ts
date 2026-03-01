@@ -627,6 +627,46 @@ export function markdownToTree(
   return { nodes, nextId: idCounter };
 }
 
+/** Merge source node into target: concatenate text, move children, remove source */
+export function mergeNodes(
+  nodes: TreeNodeData[],
+  targetId: number,
+  sourceId: number,
+  targetText: string,
+  sourceText: string
+): { tree: TreeNodeData[]; joinPoint: number } | null {
+  const tree = cloneTree(nodes);
+  const joinPoint = targetText.length;
+
+  const target = findNode(tree, targetId);
+  if (!target) return null;
+  target.text = targetText + sourceText;
+
+  const source = findNode(tree, sourceId);
+  if (!source) return null;
+
+  // Move source's children to target, adjusting indent
+  if (source.children.length > 0) {
+    function updateIndent(n: TreeNodeData, delta: number) {
+      n.indent += delta;
+      n.children.forEach((c) => updateIndent(c, delta));
+    }
+    for (const child of source.children) {
+      const delta = target.indent + 1 - child.indent;
+      updateIndent(child, delta);
+      target.children.push(child);
+    }
+    target.closed = false;
+  }
+
+  // Remove source from tree
+  const sourceCtx = findParentContext(tree, sourceId);
+  if (!sourceCtx) return null;
+  sourceCtx.siblings.splice(sourceCtx.index, 1);
+
+  return { tree, joinPoint };
+}
+
 /** Count all nodes in the tree recursively */
 export function countAllNodes(nodes: TreeNodeData[]): number {
   let count = 0;

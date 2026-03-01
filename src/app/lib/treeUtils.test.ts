@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   filterTree, copyNode, pasteNode, findNode, nextId, moveNode,
   addSiblingBefore, addChildNodeFirst, treeToText, textToTree, treeToMarkdown, toggleOl,
-  countAllNodes, getSiblingRange, deleteNodes, markdownToTree,
+  countAllNodes, getSiblingRange, deleteNodes, markdownToTree, mergeNodes,
 } from "./treeUtils";
 import { TreeNodeData } from "../components/TreeNode";
 
@@ -511,6 +511,66 @@ describe("markdownToTree（Markdownインポート）", () => {
     expect(nodes[0].children[0].text).toBe("L1");
     expect(nodes[0].children[0].children[0].text).toBe("L2");
     expect(nodes[0].children[0].children[0].children[0].text).toBe("L3");
+  });
+});
+
+describe("mergeNodes（ノード結合）", () => {
+  it("merges text from source into target", () => {
+    const result = mergeNodes(testTree, 2, 4, "デザイン", "コーディング");
+    expect(result).not.toBeNull();
+    const target = findNode(result!.tree, 2)!;
+    expect(target.text).toBe("デザインコーディング");
+  });
+
+  it("returns correct joinPoint", () => {
+    const result = mergeNodes(testTree, 2, 4, "デザイン", "コーディング");
+    expect(result!.joinPoint).toBe("デザイン".length);
+  });
+
+  it("removes source from tree", () => {
+    const result = mergeNodes(testTree, 2, 4, "デザイン", "コーディング");
+    expect(findNode(result!.tree, 4)).toBeNull();
+  });
+
+  it("moves source children to target", () => {
+    // Source: コーディング(4) has child TypeScript入門(5)
+    const result = mergeNodes(testTree, 2, 4, "デザイン", "コーディング");
+    const target = findNode(result!.tree, 2)!;
+    // Target had 配色ルール(3), now also has TypeScript入門(5)
+    expect(target.children.length).toBe(2);
+    expect(target.children[0].text).toBe("配色ルール");
+    expect(target.children[1].text).toBe("TypeScript入門");
+  });
+
+  it("adjusts indent of moved children", () => {
+    const result = mergeNodes(testTree, 2, 4, "デザイン", "コーディング");
+    const target = findNode(result!.tree, 2)!;
+    // Target indent is 2, so children should be indent 3
+    expect(target.children[1].indent).toBe(3);
+  });
+
+  it("merges leaf nodes without children", () => {
+    // Merge 配色ルール(3) and TypeScript入門(5) — but they're not siblings
+    // Use a flat tree instead
+    const flat: TreeNodeData[] = [
+      { id: 10, text: "AAA", indent: 1, closed: false, children: [] },
+      { id: 11, text: "BBB", indent: 1, closed: false, children: [] },
+    ];
+    const result = mergeNodes(flat, 10, 11, "AAA", "BBB");
+    expect(result).not.toBeNull();
+    expect(result!.tree.length).toBe(1);
+    expect(result!.tree[0].text).toBe("AAABBB");
+    expect(result!.tree[0].children.length).toBe(0);
+  });
+
+  it("returns null if target not found", () => {
+    const result = mergeNodes(testTree, 999, 2, "x", "y");
+    expect(result).toBeNull();
+  });
+
+  it("returns null if source not found", () => {
+    const result = mergeNodes(testTree, 2, 999, "x", "y");
+    expect(result).toBeNull();
   });
 });
 

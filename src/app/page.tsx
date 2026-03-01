@@ -31,6 +31,7 @@ import {
   markdownToTree,
   toggleOl,
   getSiblingRange,
+  mergeNodes,
 } from "./lib/treeUtils";
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -46,7 +47,12 @@ export default function Home() {
     selectedIdRef.current = id;
     setSelectedIdRaw(id);
   }, []);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingIdRaw] = useState<number | null>(null);
+  const editingIdRef = useRef<number | null>(null);
+  const setEditingId = useCallback((id: number | null) => {
+    editingIdRef.current = id;
+    setEditingIdRaw(id);
+  }, []);
   const [editText, setEditText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -79,6 +85,8 @@ export default function Home() {
   const [editOnAdd, setEditOnAdd] = useState(true);
   const prevCountRef = useRef<number | null>(null);
   const [theme, setTheme] = useState<ThemeMode>("light");
+  const cursorPositionRef = useRef<number | undefined>(undefined);
+  const [editTrigger, setEditTrigger] = useState(0);
 
   const saveTree = useCallback((data: TreeNodeData[]) => {
     setSaveStatus("saving");
@@ -182,9 +190,22 @@ export default function Home() {
     nodesRef.current = prev.nodes;
     setNodes(prev.nodes);
     setSelectedId(prev.selectedId);
+    // Re-enter edit mode on restored selection
+    if (prev.selectedId !== null) {
+      const node = findNode(prev.nodes, prev.selectedId);
+      if (node) {
+        cursorPositionRef.current = 0;
+        setEditingId(prev.selectedId);
+        setEditText(node.text);
+      } else {
+        setEditingId(null);
+      }
+    } else {
+      setEditingId(null);
+    }
     saveTree(prev.nodes);
     prevCountRef.current = countAllNodes(prev.nodes);
-  }, [saveTree, setSelectedId]);
+  }, [saveTree, setSelectedId, setEditingId]);
 
   const redo = useCallback(() => {
     const next = redoStack.current.pop();
@@ -193,19 +214,34 @@ export default function Home() {
     nodesRef.current = next.nodes;
     setNodes(next.nodes);
     setSelectedId(next.selectedId);
+    // Re-enter edit mode on restored selection
+    if (next.selectedId !== null) {
+      const node = findNode(next.nodes, next.selectedId);
+      if (node) {
+        cursorPositionRef.current = 0;
+        setEditingId(next.selectedId);
+        setEditText(node.text);
+      } else {
+        setEditingId(null);
+      }
+    } else {
+      setEditingId(null);
+    }
     saveTree(next.nodes);
     prevCountRef.current = countAllNodes(next.nodes);
-  }, [saveTree, setSelectedId]);
+  }, [saveTree, setSelectedId, setEditingId]);
 
   const startEdit = useCallback(
-    (id: number) => {
-      const node = findNode(nodes, id);
+    (id: number, cursorPos?: number) => {
+      const node = findNode(nodesRef.current, id);
       if (node) {
+        cursorPositionRef.current = cursorPos;
+        setSelectedId(id);
         setEditingId(id);
         setEditText(node.text);
       }
     },
-    [nodes]
+    [setEditingId, setSelectedId]
   );
 
   const confirmEdit = useCallback(() => {
@@ -229,7 +265,182 @@ export default function Home() {
     setEditingId(null);
   }, [editingId, nodes, editText, update, setSelectedId]);
 
+  const splitEdit = useCallback((before: string, after: string) => {
+    if (editingId === null) return;
+    // Update current node text to 'before'
+    let tree = updateNodeText(nodes, editingId, before);
+    // Add sibling after current node
+    const newId = nextId(tree);
+    const result = addSiblingNode(tree, editingId, newId);
+    if (!result) return;
+    tree = result.tree;
+    // Set the new node's text to 'after'
+    tree = updateNodeText(tree, newId, after);
+    update(tree);
+    // Enter editing on the new node
+    cursorPositionRef.current = 0;
+    setSelectedId(newId);
+    setEditingId(newId);
+    setEditText(after);
+  }, [editingId, nodes, update, setSelectedId]);
+
   const displayNodes = searchQuery ? filterTree(nodes, searchQuery) : nodes;
+
+  const mergeWithPrevious = useCallback(
+    (text: string) => {
+      if (editingIdRef.current === null) return;
+      const currentId = editingIdRef.current;
+      const visible = flattenVisible(
+        searchQuery ? filterTree(nodesRef.current, searchQuery) : nodesRef.current
+      );
+      const currentIndex = visible.findIndex((n) => n.id === currentId);
+      if (currentIndex <= 0) return;
+
+      const prevNode = visible[currentIndex - 1];
+      const result = mergeNodes(nodesRef.current, prevNode.id, currentId, prevNode.text, text);
+      if (!result) return;
+
+      setEditingId(null);
+      update(result.tree);
+      setSelectedId(prevNode.id);
+      startEdit(prevNode.id, result.joinPoint);
+    },
+    [searchQuery, update, setSelectedId, startEdit, setEditingId]
+  );
+
+  const mergeWithNext = useCallback(
+    (text: string) => {
+      if (editingIdRef.current === null) return;
+      const currentId = editingIdRef.current;
+      const visible = flattenVisible(
+        searchQuery ? filterTree(nodesRef.current, searchQuery) : nodesRef.current
+      );
+      const currentIndex = visible.findIndex((n) => n.id === currentId);
+
+      // Empty text: delete current node
+      // Last child of parent → move to previous; otherwise → move to next
+      if (text === "") {
+        const ctx = findParentContext(nodesRef.current, currentId);
+        const isLastChild = ctx && ctx.index === ctx.siblings.length - 1;
+        const newNodes = deleteNode(nodesRef.current, currentId);
+        update(newNodes);
+        if (!isLastChild && currentIndex < visible.length - 1) {
+          const nextNode = visible[currentIndex + 1];
+          startEdit(nextNode.id, 0);
+        } else if (currentIndex > 0) {
+          const prevNode = visible[currentIndex - 1];
+          startEdit(prevNode.id, prevNode.text.length);
+        }
+        return;
+      }
+
+      if (currentIndex >= visible.length - 1) return;
+
+      // Last child of parent: don't merge with next (it's from a different level)
+      const ctx = findParentContext(nodesRef.current, currentId);
+      if (ctx && ctx.index === ctx.siblings.length - 1) return;
+
+      const nextNode = visible[currentIndex + 1];
+      const result = mergeNodes(nodesRef.current, currentId, nextNode.id, text, nextNode.text);
+      if (!result) return;
+
+      update(result.tree);
+      // Same node stays editing — update text and trigger cursor reposition
+      setEditText(text + nextNode.text);
+      cursorPositionRef.current = result.joinPoint;
+      setEditTrigger((prev) => prev + 1);
+    },
+    [searchQuery, update, startEdit]
+  );
+
+  const indentEditing = useCallback(
+    (cursorPos: number) => {
+      if (editingIdRef.current === null) return;
+      const currentId = editingIdRef.current;
+      // Save current text, then indent
+      const tree = updateNodeText(nodesRef.current, currentId, editText);
+      const indented = indentNode(tree, currentId);
+      if (!indented) return;
+
+      update(indented);
+      cursorPositionRef.current = cursorPos;
+      setEditTrigger((prev) => prev + 1);
+    },
+    [editText, update]
+  );
+
+  const outdentEditing = useCallback(
+    (cursorPos: number) => {
+      if (editingIdRef.current === null) return;
+      const currentId = editingIdRef.current;
+      // Save current text, then outdent
+      const tree = updateNodeText(nodesRef.current, currentId, editText);
+      const outdented = outdentNode(tree, currentId);
+      if (!outdented) return;
+
+      update(outdented);
+      cursorPositionRef.current = cursorPos;
+      setEditTrigger((prev) => prev + 1);
+    },
+    [editText, update]
+  );
+
+  const deselectNode = useCallback(() => {
+    setEditingId(null);
+    setSelectedId(null);
+  }, [setEditingId, setSelectedId]);
+
+  const moveToPreviousEnd = useCallback((cursorPos?: number) => {
+    if (editingIdRef.current === null) return;
+    const currentId = editingIdRef.current;
+
+    // Confirm current edit
+    const tree = updateNodeText(nodesRef.current, currentId, editText);
+    setEditingId(null);
+    update(tree);
+
+    // Navigate to previous visible node
+    const visible = flattenVisible(
+      searchQuery ? filterTree(tree, searchQuery) : tree
+    );
+    const currentIndex = visible.findIndex((n) => n.id === currentId);
+    if (currentIndex <= 0) return;
+
+    const prevId = visible[currentIndex - 1].id;
+    setSelectedId(prevId);
+    startEdit(prevId, cursorPos !== undefined ? cursorPos : Infinity);
+  }, [editText, searchQuery, update, setSelectedId, startEdit, setEditingId]);
+
+  const moveToNextStart = useCallback(() => {
+    if (editingIdRef.current === null) return;
+    const currentId = editingIdRef.current;
+
+    const tree = updateNodeText(nodesRef.current, currentId, editText);
+    setEditingId(null);
+    update(tree);
+
+    const visible = flattenVisible(
+      searchQuery ? filterTree(tree, searchQuery) : tree
+    );
+    const currentIndex = visible.findIndex((n) => n.id === currentId);
+
+    if (currentIndex >= visible.length - 1) {
+      // Last node: add new sibling after
+      const newId = nextId(tree);
+      const result = addSiblingNode(tree, currentId, newId);
+      if (result) {
+        update(result.tree);
+        addOriginRef.current = currentId;
+        startEdit(newId, 0);
+        setEditText("");
+      }
+      return;
+    }
+
+    const nextNodeId = visible[currentIndex + 1].id;
+    setSelectedId(nextNodeId);
+    startEdit(nextNodeId, 0);
+  }, [editText, searchQuery, update, setSelectedId, startEdit, setEditingId]);
 
   const nodeCount = useMemo(() => countAllNodes(nodes), [nodes]);
 
@@ -365,8 +576,51 @@ export default function Home() {
         return;
       }
 
+      // Ctrl+Delete: delete current node (works even while editing)
+      if (e.key === "Delete" && e.ctrlKey && selectedId !== null) {
+        e.preventDefault();
+        setEditingId(null);
+        const visibleNow = flattenVisible(displayNodes);
+        const currentIndex = visibleNow.findIndex((n) => n.id === selectedId);
+        const newNodes = selectedIds.size > 0
+          ? deleteNodes(nodes, selectedIds)
+          : deleteNode(nodes, selectedId);
+        update(newNodes);
+        setSelectedIdsWrapped(new Set());
+        selectionAnchorRef.current = null;
+        const newVisible = flattenVisible(
+          searchQuery ? filterTree(newNodes, searchQuery) : newNodes
+        );
+        if (newVisible.length === 0) {
+          setSelectedId(null);
+        } else if (currentIndex > 0) {
+          // Move to previous node
+          const prevIndex = Math.min(currentIndex - 1, newVisible.length - 1);
+          startEdit(newVisible[prevIndex].id, newVisible[prevIndex].text.length);
+        } else {
+          // Was first node — move to new first
+          startEdit(newVisible[0].id, 0);
+        }
+        return;
+      }
+
+      // Ctrl+Enter: add child node (works even while editing)
+      if (e.key === "Enter" && e.ctrlKey && selectedId !== null) {
+        e.preventDefault();
+        setSelectedIdsWrapped(new Set());
+        selectionAnchorRef.current = null;
+        const newId = nextId(nodes);
+        const { tree } = addChildNode(nodes, selectedId, newId);
+        update(tree);
+        addOriginRef.current = selectedId;
+        startEdit(newId, 0);
+        setEditText("");
+        return;
+      }
+
       // Don't handle other keys while editing (input handles its own keys)
-      if (editingId !== null) return;
+      // Arrow up/down pass through after confirm (editingIdRef is already cleared)
+      if (editingIdRef.current !== null) return;
 
       // F3 / Ctrl+G: next search match
       if ((e.key === "F3" && !e.shiftKey) || (key === "g" && e.ctrlKey && !e.shiftKey)) {
@@ -552,20 +806,16 @@ export default function Home() {
         return;
       }
 
-      // Delete: delete selected node(s)
-      if (e.key === "Delete" && selectedId !== null) {
+      // Delete: delete selected node(s) (non-editing only; Ctrl+Delete handled above)
+      if (e.key === "Delete" && !e.ctrlKey && selectedId !== null) {
         e.preventDefault();
         const currentIndex = visible.findIndex((n) => n.id === selectedId);
-        let newNodes: TreeNodeData[];
-        if (selectedIds.size > 0) {
-          newNodes = deleteNodes(nodes, selectedIds);
-        } else {
-          newNodes = deleteNode(nodes, selectedId);
-        }
+        const newNodes = selectedIds.size > 0
+          ? deleteNodes(nodes, selectedIds)
+          : deleteNode(nodes, selectedId);
         update(newNodes);
         setSelectedIdsWrapped(new Set());
         selectionAnchorRef.current = null;
-        // Select next or previous visible node
         const newVisible = flattenVisible(
           searchQuery ? filterTree(newNodes, searchQuery) : newNodes
         );
@@ -684,6 +934,17 @@ export default function Home() {
           newIndex = currentIndex - 1;
         } else if (e.key === "ArrowDown" && currentIndex < visible.length - 1) {
           newIndex = currentIndex + 1;
+        } else if (e.key === "ArrowDown" && currentIndex === visible.length - 1) {
+          // Last node: add new sibling after
+          const newId = nextId(nodes);
+          const result = addSiblingNode(nodes, selectedId, newId);
+          if (result) {
+            update(result.tree);
+            addOriginRef.current = selectedId;
+            startEdit(newId, 0);
+            setEditText("");
+          }
+          return;
         }
 
         if (newIndex !== currentIndex) {
@@ -710,6 +971,7 @@ export default function Home() {
             setSelectedIdsWrapped(new Set());
             selectionAnchorRef.current = null;
             setSelectedId(newId);
+            startEdit(newId, 0);
           }
 
           // Scroll new selection into view
@@ -771,8 +1033,9 @@ export default function Home() {
       setSelectedIdsWrapped(new Set());
       selectionAnchorRef.current = null;
       setSelectedId(id);
+      startEdit(id);
     },
-    [setSelectedId]
+    [setSelectedId, startEdit]
   );
 
   const handleDrop = useCallback(
@@ -1068,12 +1331,22 @@ export default function Home() {
               editText={editText}
               dragId={dragId}
               searchQuery={searchQuery}
+              cursorPosition={cursorPositionRef.current}
+              editTrigger={editTrigger}
               onSelect={handleSelect}
               onToggle={handleToggle}
               onStartEdit={startEdit}
               onEditTextChange={setEditText}
               onEditConfirm={confirmEdit}
               onEditCancel={cancelEdit}
+              onEditSplit={splitEdit}
+              onMergeWithPrevious={mergeWithPrevious}
+              onMergeWithNext={mergeWithNext}
+              onIndent={indentEditing}
+              onOutdent={outdentEditing}
+              onDeselect={deselectNode}
+              onMoveToPreviousEnd={moveToPreviousEnd}
+              onMoveToNextStart={moveToNextStart}
               onDragStart={setDragId}
               onDrop={handleDrop}
               onDragEnd={handleDragEnd}
@@ -1113,16 +1386,17 @@ export default function Home() {
                     ["F3 / Shift+F3", "Next/prev match"],
                   ]],
                   ["Editing", [
-                    ["F2 / Space", "Edit node"],
-                    ["Ctrl+Enter", "Confirm edit"],
-                    ["Escape", "Cancel / clear"],
+                    ["Enter", "Split node at cursor"],
+                    ["Ctrl+Enter", "Add child node"],
+                    ["Escape", "Confirm + deselect"],
+                    ["Backspace", "Merge with previous (at start)"],
+                    ["Delete", "Merge with next (at end)"],
+                    ["Ctrl+Delete", "Delete node"],
+                    ["Tab / Shift+Tab", "Indent / Outdent"],
                   ]],
                   ["Structure", [
-                    ["Enter", "Add sibling after"],
-                    ["Shift+Enter", "Add sibling before"],
-                    ["Tab", "Add child (end)"],
-                    ["Shift+Tab", "Add child (start)"],
-                    ["Delete", "Delete node(s)"],
+                    ["Enter", "Add sibling after (no selection)"],
+                    ["Delete", "Delete node(s) (no editing)"],
                     ["Alt+\u2191 / \u2193", "Move node up/down"],
                     ["Alt+\u2192 / \u2190", "Indent / Outdent"],
                   ]],

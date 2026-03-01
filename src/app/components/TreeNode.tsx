@@ -23,12 +23,22 @@ interface TreeNodeProps {
   searchQuery?: string;
   siblingIndex?: number;
   parentOl?: boolean;
+  cursorPosition?: number;
+  editTrigger?: number;
   onSelect: (id: number) => void;
   onToggle: (id: number) => void;
   onStartEdit: (id: number) => void;
   onEditTextChange: (text: string) => void;
   onEditConfirm: () => void;
   onEditCancel: () => void;
+  onEditSplit: (before: string, after: string) => void;
+  onMergeWithPrevious: (text: string) => void;
+  onMergeWithNext: (text: string) => void;
+  onIndent: (cursorPos: number) => void;
+  onOutdent: (cursorPos: number) => void;
+  onDeselect: () => void;
+  onMoveToPreviousEnd: (cursorPos?: number) => void;
+  onMoveToNextStart: () => void;
   onDragStart: (id: number) => void;
   onDrop: (dragId: number, targetId: number, position: "before" | "after" | "child", indent?: number) => void;
   onDragEnd: () => void;
@@ -84,12 +94,22 @@ export default function TreeNode({
   searchQuery,
   siblingIndex,
   parentOl,
+  cursorPosition,
+  editTrigger,
   onSelect,
   onToggle,
   onStartEdit,
   onEditTextChange,
   onEditConfirm,
   onEditCancel,
+  onEditSplit,
+  onMergeWithPrevious,
+  onMergeWithNext,
+  onIndent,
+  onOutdent,
+  onDeselect,
+  onMoveToPreviousEnd,
+  onMoveToNextStart,
   onDragStart,
   onDrop,
   onDragEnd,
@@ -103,6 +123,7 @@ export default function TreeNode({
   const rowRef = useRef<HTMLDivElement>(null);
   const [dropPosition, setDropPosition] = useState<DropPosition>(null);
   const [dropIndent, setDropIndent] = useState<number>(1);
+  const cleanCursorRef = useRef<number>(0);
 
   function autoResize(el: HTMLTextAreaElement) {
     el.style.height = "auto";
@@ -112,10 +133,14 @@ export default function TreeNode({
   useEffect(() => {
     if (isEditing && textareaRef.current) {
       textareaRef.current.focus();
-      textareaRef.current.select();
+      const pos = cursorPosition !== undefined
+        ? Math.min(cursorPosition, textareaRef.current.value.length)
+        : 0;
+      textareaRef.current.setSelectionRange(pos, pos);
       autoResize(textareaRef.current);
     }
-  }, [isEditing]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditing, editTrigger]);
 
   const handleDragOver = useCallback(
     (e: React.DragEvent) => {
@@ -251,20 +276,181 @@ export default function TreeNode({
           <textarea
             ref={textareaRef}
             rows={1}
-            className="flex-1 bg-white text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100 px-1 rounded outline-none border border-blue-400 resize-none overflow-hidden leading-snug"
+            className="flex-1 bg-transparent px-0 outline-none border-none resize-none overflow-hidden leading-snug caret-blue-500"
             value={editText}
             onChange={(e) => {
               onEditTextChange(e.target.value);
               autoResize(e.target);
             }}
             onKeyDown={(e) => {
+              // Track cursor position while text is clean (for Ctrl+Z revert)
+              if (editText === node.text) {
+                cleanCursorRef.current = e.currentTarget.selectionStart ?? 0;
+              }
+
+              // Ctrl+Z: two-stage undo
+              // 1) If unsaved changes exist, revert to stored text
+              // 2) If no unsaved changes, let bubble for tree-level undo
+              if (e.ctrlKey && e.key === "z" && !e.shiftKey) {
+                if (editText !== node.text) {
+                  e.preventDefault();
+                  const pos = cleanCursorRef.current;
+                  onEditTextChange(node.text);
+                  if (textareaRef.current) {
+                    autoResize(textareaRef.current);
+                    requestAnimationFrame(() => {
+                      if (textareaRef.current) {
+                        const clamped = Math.min(pos, node.text.length);
+                        textareaRef.current.setSelectionRange(clamped, clamped);
+                      }
+                    });
+                  }
+                  e.stopPropagation();
+                  return;
+                }
+                // No unsaved changes — let bubble for tree-level undo
+                return;
+              }
+
+              // Ctrl+Y / Ctrl+Shift+Z: let bubble for tree-level redo
+              if (e.ctrlKey && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
+                return;
+              }
+
+              // ArrowUp/Down: move within visual lines first, then navigate nodes
+              if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                const ta = e.currentTarget;
+                const beforeStart = ta.selectionStart;
+                const beforeEnd = ta.selectionEnd;
+                const isDown = e.key === "ArrowDown";
+                const isShift = e.shiftKey;
+                // Let default textarea cursor/selection movement happen
+                e.stopPropagation();
+                requestAnimationFrame(() => {
+                  if (!textareaRef.current) return;
+                  const afterStart = textareaRef.current.selectionStart;
+                  const afterEnd = textareaRef.current.selectionEnd;
+                  if (afterStart === beforeStart && afterEnd === beforeEnd) {
+                    // Cursor/selection didn't move — at boundary
+                    if (!isShift) {
+                      // Navigate to adjacent node (only without Shift)
+                      if (isDown) {
+                        onMoveToNextStart();
+                      } else {
+                        onMoveToPreviousEnd(0);
+                      }
+                    }
+                  }
+                });
+                return;
+              }
+
+              // Ctrl+ArrowRight: expand node
+              if (e.key === "ArrowRight" && e.ctrlKey) {
+                e.preventDefault();
+                if (hasChildren && node.closed) onToggle(node.id);
+                e.stopPropagation();
+                return;
+              }
+
+              // Ctrl+ArrowLeft: collapse node
+              if (e.key === "ArrowLeft" && e.ctrlKey) {
+                e.preventDefault();
+                if (hasChildren && !node.closed) onToggle(node.id);
+                e.stopPropagation();
+                return;
+              }
+
+              // ArrowLeft at position 0: move to previous node's end
+              if (e.key === "ArrowLeft") {
+                const ta = e.currentTarget;
+                if (ta.selectionStart === 0 && ta.selectionEnd === 0) {
+                  e.preventDefault();
+                  onMoveToPreviousEnd();
+                  e.stopPropagation();
+                  return;
+                }
+              }
+
+              // ArrowRight at end: move to next node's start
+              if (e.key === "ArrowRight") {
+                const ta = e.currentTarget;
+                if (ta.selectionStart === editText.length && ta.selectionEnd === editText.length) {
+                  e.preventDefault();
+                  onMoveToNextStart();
+                  e.stopPropagation();
+                  return;
+                }
+              }
+
+              // Tab / Shift+Tab: indent/outdent
+              if (e.key === "Tab") {
+                e.preventDefault();
+                const pos = e.currentTarget.selectionStart ?? 0;
+                if (e.shiftKey) {
+                  onOutdent(pos);
+                } else {
+                  onIndent(pos);
+                }
+                e.stopPropagation();
+                return;
+              }
+
+              // Backspace at position 0: merge with previous
+              if (e.key === "Backspace") {
+                const ta = e.currentTarget;
+                if (ta.selectionStart === 0 && ta.selectionEnd === 0) {
+                  e.preventDefault();
+                  onMergeWithPrevious(editText);
+                  e.stopPropagation();
+                  return;
+                }
+              }
+
+              // Ctrl+Delete: confirm edit and let bubble to global delete handler
+              if (e.key === "Delete" && e.ctrlKey) {
+                onEditConfirm();
+                return; // Don't stopPropagation — bubble to global handler
+              }
+
+              // Delete at end: merge with next
+              if (e.key === "Delete") {
+                const ta = e.currentTarget;
+                if (ta.selectionStart === editText.length && ta.selectionEnd === editText.length) {
+                  e.preventDefault();
+                  onMergeWithNext(editText);
+                  e.stopPropagation();
+                  return;
+                }
+              }
+
+              // Ctrl+Enter: confirm edit and let bubble for add child
               if (e.key === "Enter" && e.ctrlKey) {
+                onEditConfirm();
+                return; // Bubble to global handler
+              }
+
+              // Enter: split at cursor
+              if (e.key === "Enter" && !e.shiftKey && !e.altKey && !e.metaKey) {
+                e.preventDefault();
+                const ta = e.currentTarget;
+                const pos = ta.selectionStart ?? editText.length;
+                const before = editText.slice(0, pos);
+                const after = editText.slice(pos);
+                onEditSplit(before, after);
+                e.stopPropagation();
+                return;
+              }
+
+              // Escape: confirm + deselect
+              if (e.key === "Escape") {
                 e.preventDefault();
                 onEditConfirm();
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                onEditCancel();
+                onDeselect();
+                e.stopPropagation();
+                return;
               }
+
               e.stopPropagation();
             }}
             onClick={(e) => e.stopPropagation()}
@@ -274,7 +460,7 @@ export default function TreeNode({
             {node.text ? (
               <HighlightedText text={node.text} query={searchQuery || ""} />
             ) : (
-              <span className="text-zinc-400">(empty)</span>
+              <span>&nbsp;</span>
             )}
           </span>
         )}
@@ -294,12 +480,22 @@ export default function TreeNode({
             searchQuery={searchQuery}
             siblingIndex={idx}
             parentOl={node.ol}
+            cursorPosition={cursorPosition}
+            editTrigger={editTrigger}
             onSelect={onSelect}
             onToggle={onToggle}
             onStartEdit={onStartEdit}
             onEditTextChange={onEditTextChange}
             onEditConfirm={onEditConfirm}
             onEditCancel={onEditCancel}
+            onEditSplit={onEditSplit}
+            onMergeWithPrevious={onMergeWithPrevious}
+            onMergeWithNext={onMergeWithNext}
+            onIndent={onIndent}
+            onOutdent={onOutdent}
+            onDeselect={onDeselect}
+            onMoveToPreviousEnd={onMoveToPreviousEnd}
+            onMoveToNextStart={onMoveToNextStart}
             onDragStart={onDragStart}
             onDrop={onDrop}
             onDragEnd={onDragEnd}
