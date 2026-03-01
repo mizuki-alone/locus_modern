@@ -40,6 +40,10 @@ interface TreeNodeProps {
   onMoveToPreviousEnd: (cursorPos?: number) => void;
   onMoveToNextStart: () => void;
   onShiftBoundary: (direction: 'up' | 'down') => void;
+  onTreeCopy: () => void;
+  onTreeCut: () => void;
+  onTreePaste: (() => void) | null;
+  onTextCopied: () => void;
   onDragStart: (id: number) => void;
   onDrop: (dragId: number, targetId: number, position: "before" | "after" | "child", indent?: number) => void;
   onDragEnd: () => void;
@@ -112,6 +116,10 @@ export default function TreeNode({
   onMoveToPreviousEnd,
   onMoveToNextStart,
   onShiftBoundary,
+  onTreeCopy,
+  onTreeCut,
+  onTreePaste,
+  onTextCopied,
   onDragStart,
   onDrop,
   onDragEnd,
@@ -317,6 +325,43 @@ export default function TreeNode({
                 return;
               }
 
+              // Ctrl+C: tree-level copy (only when no text is selected)
+              if (e.ctrlKey && e.key === "c") {
+                const ta = e.currentTarget as HTMLTextAreaElement;
+                if (ta.selectionStart !== ta.selectionEnd) {
+                  e.stopPropagation(); // prevent global handler from doing node copy
+                  return; // let native copy handle selected text
+                }
+                e.preventDefault();
+                e.stopPropagation();
+                onEditConfirm();
+                onTreeCopy();
+                return;
+              }
+
+              // Ctrl+X: tree-level cut (only when no text is selected)
+              if (e.ctrlKey && e.key === "x") {
+                const ta = e.currentTarget as HTMLTextAreaElement;
+                if (ta.selectionStart !== ta.selectionEnd) {
+                  e.stopPropagation(); // prevent global handler from doing node cut
+                  return; // let native cut handle selected text
+                }
+                e.preventDefault();
+                e.stopPropagation();
+                onEditConfirm();
+                onTreeCut();
+                return;
+              }
+
+              // Ctrl+V: tree-level paste if clipboard has content
+              if (e.ctrlKey && e.key === "v" && onTreePaste) {
+                e.preventDefault();
+                e.stopPropagation();
+                onEditConfirm();
+                onTreePaste();
+                return;
+              }
+
               // ArrowUp/Down: move within visual lines first, then navigate nodes
               if (e.key === "ArrowUp" || e.key === "ArrowDown") {
                 const ta = e.currentTarget;
@@ -458,6 +503,7 @@ export default function TreeNode({
               e.stopPropagation();
             }}
             onClick={(e) => e.stopPropagation()}
+            onCopy={onTextCopied}
           />
         ) : (
           <span className="whitespace-pre-wrap">
@@ -501,6 +547,10 @@ export default function TreeNode({
             onMoveToPreviousEnd={onMoveToPreviousEnd}
             onMoveToNextStart={onMoveToNextStart}
             onShiftBoundary={onShiftBoundary}
+            onTreeCopy={onTreeCopy}
+            onTreeCut={onTreeCut}
+            onTreePaste={onTreePaste}
+            onTextCopied={onTextCopied}
             onDragStart={onDragStart}
             onDrop={onDrop}
             onDragEnd={onDragEnd}

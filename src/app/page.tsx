@@ -22,7 +22,9 @@ import {
   nextId,
   filterTree,
   copyNode,
+  copyNodes,
   pasteNode,
+  pasteNodes,
   moveNode,
   countAllNodes,
   treeToText,
@@ -67,7 +69,10 @@ export default function Home() {
   const redoStack = useRef<UndoEntry[]>([]);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const clipboardRef = useRef<TreeNodeData | null>(null);
+  const clipboardRef = useRef<TreeNodeData[]>([]);
+  const [hasTreeClipboard, setHasTreeClipboard] = useState(false);
+  const [clipboardMsg, setClipboardMsg] = useState<string | null>(null);
+  const clipboardMsgTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [dragId, setDragId] = useState<number | null>(null);
   const skipScrollRef = useRef(false);
   const addOriginRef = useRef<number | null>(null);
@@ -471,6 +476,103 @@ export default function Home() {
     }
   }, [displayNodes, nodes, setEditingId, setSelectedId, setSelectedIdsWrapped]);
 
+  const treePaste = useCallback(() => {
+    const id = selectedIdRef.current;
+    if (id === null || clipboardRef.current.length === 0) return;
+    const startId = nextId(nodesRef.current);
+    const newNodes = pasteNodes(nodesRef.current, id, clipboardRef.current, startId);
+    update(newNodes);
+    // Select last pasted node
+    const visible = flattenVisible(
+      searchQuery ? filterTree(newNodes, searchQuery) : newNodes
+    );
+    const targetIndex = visible.findIndex((n) => n.id === id);
+    if (targetIndex !== -1 && targetIndex + clipboardRef.current.length < visible.length) {
+      setSelectedId(visible[targetIndex + clipboardRef.current.length].id);
+    }
+    setClipboardMsg(`Pasted ${clipboardRef.current.length} node(s)`);
+    if (clipboardMsgTimer.current) clearTimeout(clipboardMsgTimer.current);
+    clipboardMsgTimer.current = setTimeout(() => setClipboardMsg(null), 2000);
+  }, [searchQuery, update, setSelectedId]);
+
+  const treeCopy = useCallback(() => {
+    const id = selectedIdRef.current;
+    if (id === null) return;
+    const selectedIds = selectedIdsRef.current;
+    if (selectedIds.size > 0) {
+      clipboardRef.current = copyNodes(nodesRef.current, selectedIds);
+    } else {
+      const copied = copyNode(nodesRef.current, id);
+      clipboardRef.current = copied ? [copied] : [];
+    }
+    setHasTreeClipboard(clipboardRef.current.length > 0);
+    if (clipboardRef.current.length > 0) {
+      setClipboardMsg(`Copied ${clipboardRef.current.length} node(s)`);
+      if (clipboardMsgTimer.current) clearTimeout(clipboardMsgTimer.current);
+      clipboardMsgTimer.current = setTimeout(() => setClipboardMsg(null), 2000);
+    }
+  }, []);
+
+  const textCopied = useCallback(() => {
+    setClipboardMsg("Text copied");
+    if (clipboardMsgTimer.current) clearTimeout(clipboardMsgTimer.current);
+    clipboardMsgTimer.current = setTimeout(() => setClipboardMsg(null), 2000);
+  }, []);
+
+  const treeCut = useCallback(() => {
+    const id = selectedIdRef.current;
+    if (id === null) return;
+    const currentNodes = nodesRef.current;
+    const selectedIds = selectedIdsRef.current;
+    const showCutMsg = (count: number) => {
+      setClipboardMsg(`Cut ${count} node(s)`);
+      if (clipboardMsgTimer.current) clearTimeout(clipboardMsgTimer.current);
+      clipboardMsgTimer.current = setTimeout(() => setClipboardMsg(null), 2000);
+    };
+    if (selectedIds.size > 0) {
+      clipboardRef.current = copyNodes(currentNodes, selectedIds);
+      setHasTreeClipboard(true);
+      showCutMsg(clipboardRef.current.length);
+      const visible = flattenVisible(displayNodes);
+      const currentIndex = visible.findIndex((n) => n.id === id);
+      const newNodes = deleteNodes(currentNodes, selectedIds);
+      update(newNodes);
+      setSelectedIdsWrapped(new Set());
+      selectionAnchorRef.current = null;
+      const newVisible = flattenVisible(
+        searchQuery ? filterTree(newNodes, searchQuery) : newNodes
+      );
+      if (newVisible.length === 0) {
+        setSelectedId(null);
+      } else if (currentIndex < newVisible.length) {
+        setSelectedId(newVisible[currentIndex].id);
+      } else {
+        setSelectedId(newVisible[newVisible.length - 1].id);
+      }
+    } else {
+      const copied = copyNode(currentNodes, id);
+      if (copied) {
+        clipboardRef.current = [copied];
+        setHasTreeClipboard(true);
+        showCutMsg(1);
+        const visible = flattenVisible(displayNodes);
+        const currentIndex = visible.findIndex((n) => n.id === id);
+        const newNodes = deleteNode(currentNodes, id);
+        update(newNodes);
+        const newVisible = flattenVisible(
+          searchQuery ? filterTree(newNodes, searchQuery) : newNodes
+        );
+        if (newVisible.length === 0) {
+          setSelectedId(null);
+        } else if (currentIndex < newVisible.length) {
+          setSelectedId(newVisible[currentIndex].id);
+        } else {
+          setSelectedId(newVisible[newVisible.length - 1].id);
+        }
+      }
+    }
+  }, [displayNodes, searchQuery, update, setSelectedId, setSelectedIdsWrapped]);
+
   const nodeCount = useMemo(() => countAllNodes(nodes), [nodes]);
 
   // Collect search-matching node IDs in display order
@@ -556,24 +658,42 @@ export default function Home() {
         return;
       }
 
-      // Ctrl+C: copy node
+      // Ctrl+C: copy node(s)
       if (key === "c" && e.ctrlKey && selectedId !== null) {
         e.preventDefault();
-        const copied = copyNode(nodes, selectedId);
-        if (copied) clipboardRef.current = copied;
+        if (selectedIds.size > 0) {
+          clipboardRef.current = copyNodes(nodes, selectedIds);
+        } else {
+          const copied = copyNode(nodes, selectedId);
+          clipboardRef.current = copied ? [copied] : [];
+        }
+        setHasTreeClipboard(clipboardRef.current.length > 0);
+        if (clipboardRef.current.length > 0) {
+          setClipboardMsg(`Copied ${clipboardRef.current.length} node(s)`);
+          if (clipboardMsgTimer.current) clearTimeout(clipboardMsgTimer.current);
+          clipboardMsgTimer.current = setTimeout(() => setClipboardMsg(null), 2000);
+        }
         return;
       }
 
-      // Ctrl+X: cut node
+      // Ctrl+X: cut node(s)
       if (key === "x" && e.ctrlKey && selectedId !== null) {
         e.preventDefault();
-        const copied = copyNode(nodes, selectedId);
-        if (copied) {
-          clipboardRef.current = copied;
+        const showCutMsg = (count: number) => {
+          setClipboardMsg(`Cut ${count} node(s)`);
+          if (clipboardMsgTimer.current) clearTimeout(clipboardMsgTimer.current);
+          clipboardMsgTimer.current = setTimeout(() => setClipboardMsg(null), 2000);
+        };
+        if (selectedIds.size > 0) {
+          clipboardRef.current = copyNodes(nodes, selectedIds);
+          setHasTreeClipboard(true);
+          showCutMsg(clipboardRef.current.length);
           const visible = flattenVisible(displayNodes);
           const currentIndex = visible.findIndex((n) => n.id === selectedId);
-          const newNodes = deleteNode(nodes, selectedId);
+          const newNodes = deleteNodes(nodes, selectedIds);
           update(newNodes);
+          setSelectedIdsWrapped(new Set());
+          selectionAnchorRef.current = null;
           const newVisible = flattenVisible(
             searchQuery ? filterTree(newNodes, searchQuery) : newNodes
           );
@@ -584,17 +704,48 @@ export default function Home() {
           } else {
             setSelectedId(newVisible[newVisible.length - 1].id);
           }
+        } else {
+          const copied = copyNode(nodes, selectedId);
+          if (copied) {
+            clipboardRef.current = [copied];
+            setHasTreeClipboard(true);
+            showCutMsg(1);
+            const visible = flattenVisible(displayNodes);
+            const currentIndex = visible.findIndex((n) => n.id === selectedId);
+            const newNodes = deleteNode(nodes, selectedId);
+            update(newNodes);
+            const newVisible = flattenVisible(
+              searchQuery ? filterTree(newNodes, searchQuery) : newNodes
+            );
+            if (newVisible.length === 0) {
+              setSelectedId(null);
+            } else if (currentIndex < newVisible.length) {
+              setSelectedId(newVisible[currentIndex].id);
+            } else {
+              setSelectedId(newVisible[newVisible.length - 1].id);
+            }
+          }
         }
         return;
       }
 
-      // Ctrl+V: paste node
-      if (key === "v" && e.ctrlKey && selectedId !== null && clipboardRef.current) {
+      // Ctrl+V: paste node(s)
+      if (key === "v" && e.ctrlKey && selectedId !== null && clipboardRef.current.length > 0) {
         e.preventDefault();
-        const newId = nextId(nodes);
-        const newNodes = pasteNode(nodes, selectedId, clipboardRef.current, newId);
+        const startId = nextId(nodes);
+        const newNodes = pasteNodes(nodes, selectedId, clipboardRef.current, startId);
         update(newNodes);
-        setSelectedId(newId);
+        // Select last pasted node
+        const visible = flattenVisible(
+          searchQuery ? filterTree(newNodes, searchQuery) : newNodes
+        );
+        const targetIndex = visible.findIndex((n) => n.id === selectedId);
+        if (targetIndex !== -1 && targetIndex + clipboardRef.current.length < visible.length) {
+          setSelectedId(visible[targetIndex + clipboardRef.current.length].id);
+        }
+        setClipboardMsg(`Pasted ${clipboardRef.current.length} node(s)`);
+        if (clipboardMsgTimer.current) clearTimeout(clipboardMsgTimer.current);
+        clipboardMsgTimer.current = setTimeout(() => setClipboardMsg(null), 2000);
         return;
       }
 
@@ -1189,6 +1340,9 @@ export default function Home() {
         <div className="flex items-center justify-between px-4 pb-3">
           <h1 className="text-lg font-semibold">Locus</h1>
           <div className="flex items-center gap-3">
+            {clipboardMsg && (
+              <span className="text-xs text-green-500">{clipboardMsg}</span>
+            )}
             {saveStatus !== "idle" && (
               <span
                 className={`text-xs ${
@@ -1367,6 +1521,10 @@ export default function Home() {
               onMoveToPreviousEnd={moveToPreviousEnd}
               onMoveToNextStart={moveToNextStart}
               onShiftBoundary={shiftBoundary}
+              onTreeCopy={treeCopy}
+              onTreeCut={treeCut}
+              onTreePaste={hasTreeClipboard ? treePaste : null}
+              onTextCopied={textCopied}
               onDragStart={setDragId}
               onDrop={handleDrop}
               onDragEnd={handleDragEnd}

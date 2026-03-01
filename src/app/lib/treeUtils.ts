@@ -339,6 +339,19 @@ function reassignIds(node: TreeNodeData, startId: number): number {
   return nextIdVal;
 }
 
+/** Copy multiple nodes by IDs (preserving order from siblings array) */
+export function copyNodes(
+  nodes: TreeNodeData[],
+  ids: Set<number>
+): TreeNodeData[] {
+  const result: TreeNodeData[] = [];
+  for (const id of ids) {
+    const node = findNode(nodes, id);
+    if (node) result.push(cloneTree([node])[0]);
+  }
+  return result;
+}
+
 /** Paste a copied node as a sibling after the target node */
 export function pasteNode(
   nodes: TreeNodeData[],
@@ -346,25 +359,41 @@ export function pasteNode(
   copied: TreeNodeData,
   startId: number
 ): TreeNodeData[] {
+  return pasteNodes(nodes, targetId, [copied], startId);
+}
+
+/** Paste multiple copied nodes as siblings after the target node */
+export function pasteNodes(
+  nodes: TreeNodeData[],
+  targetId: number,
+  copied: TreeNodeData[],
+  startId: number
+): TreeNodeData[] {
+  if (copied.length === 0) return nodes;
   const tree = cloneTree(nodes);
   const ctx = findParentContext(tree, targetId);
   if (!ctx) return tree;
 
-  const clone = cloneTree([copied])[0];
-  // Adjust indent to match target
   const target = ctx.siblings[ctx.index];
-  const indentDelta = target.indent - clone.indent;
-  function adjustIndent(n: TreeNodeData, delta: number) {
-    n.indent += delta;
-    n.children.forEach((c) => adjustIndent(c, delta));
+  let currentId = startId;
+
+  const clones: TreeNodeData[] = [];
+  for (const node of copied) {
+    const clone = cloneTree([node])[0];
+    // Adjust indent to match target
+    const indentDelta = target.indent - clone.indent;
+    function adjustIndent(n: TreeNodeData, delta: number) {
+      n.indent += delta;
+      n.children.forEach((c) => adjustIndent(c, delta));
+    }
+    adjustIndent(clone, indentDelta);
+    // Assign new IDs
+    currentId = reassignIds(clone, currentId);
+    clones.push(clone);
   }
-  adjustIndent(clone, indentDelta);
 
-  // Assign new IDs
-  reassignIds(clone, startId);
-
-  // Insert after target
-  ctx.siblings.splice(ctx.index + 1, 0, clone);
+  // Insert all after target
+  ctx.siblings.splice(ctx.index + 1, 0, ...clones);
   return tree;
 }
 
