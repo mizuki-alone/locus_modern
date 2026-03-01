@@ -39,6 +39,7 @@ interface TreeNodeProps {
   onDeselect: () => void;
   onMoveToPreviousEnd: (cursorPos?: number) => void;
   onMoveToNextStart: () => void;
+  onShiftBoundary: (direction: 'up' | 'down') => void;
   onDragStart: (id: number) => void;
   onDrop: (dragId: number, targetId: number, position: "before" | "after" | "child", indent?: number) => void;
   onDragEnd: () => void;
@@ -110,12 +111,13 @@ export default function TreeNode({
   onDeselect,
   onMoveToPreviousEnd,
   onMoveToNextStart,
+  onShiftBoundary,
   onDragStart,
   onDrop,
   onDragEnd,
 }: TreeNodeProps) {
   const isSelected = selectedId === node.id;
-  const isMultiSelected = !isSelected && (selectedIds?.has(node.id) ?? false);
+  const isMultiSelected = selectedIds?.has(node.id) ?? false;
   const isEditing = editingId === node.id;
   const isDragging = dragId === node.id;
   const hasChildren = node.children.length > 0;
@@ -201,14 +203,12 @@ export default function TreeNode({
     <div>
       <div
         ref={rowRef}
-        className={`flex items-start cursor-pointer select-none pr-2 rounded relative ${
+        className={`flex items-start cursor-pointer select-none pr-2 relative ${
           isDragging
             ? "opacity-40"
-            : isSelected
+            : isMultiSelected
               ? "bg-blue-100 dark:bg-blue-900/30"
-              : isMultiSelected
-                ? "bg-blue-50 dark:bg-blue-900/15"
-                : ""
+              : ""
         } ${dropPosition === "child" ? "ring-2 ring-blue-400" : ""}`}
         style={{ marginLeft: `${node.indent * 12 + 16}px` }}
         onClick={() => onSelect(node.id)}
@@ -339,6 +339,10 @@ export default function TreeNode({
                       } else {
                         onMoveToPreviousEnd(0);
                       }
+                    } else {
+                      // Shift at boundary: exit edit, trigger multi-select
+                      onEditConfirm();
+                      onShiftBoundary(isDown ? 'down' : 'up');
                     }
                   }
                 });
@@ -496,6 +500,7 @@ export default function TreeNode({
             onDeselect={onDeselect}
             onMoveToPreviousEnd={onMoveToPreviousEnd}
             onMoveToNextStart={onMoveToNextStart}
+            onShiftBoundary={onShiftBoundary}
             onDragStart={onDragStart}
             onDrop={onDrop}
             onDragEnd={onDragEnd}

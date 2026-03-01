@@ -430,6 +430,47 @@ export default function Home() {
     startEdit(nextNodeId, 0);
   }, [editText, searchQuery, update, setSelectedId, startEdit, setEditingId]);
 
+  const shiftBoundary = useCallback((direction: 'up' | 'down') => {
+    const id = editingIdRef.current ?? selectedIdRef.current;
+    if (id === null) return;
+
+    setEditingId(null);
+
+    const visible = flattenVisible(displayNodes);
+    const currentIndex = visible.findIndex(n => n.id === id);
+
+    const newIndex = direction === 'up'
+      ? Math.max(0, currentIndex - 1)
+      : Math.min(visible.length - 1, currentIndex + 1);
+    if (newIndex === currentIndex) return;
+
+    const newId = visible[newIndex].id;
+
+    // Set anchor on first shift-select
+    if (selectionAnchorRef.current === null) {
+      selectionAnchorRef.current = id;
+    }
+
+    // Compute sibling range — if out of sibling scope, don't move
+    const range = getSiblingRange(nodes, selectionAnchorRef.current, newId);
+    if (!range) return;
+
+    setSelectedId(newId);
+    setSelectedIdsWrapped(new Set(range));
+
+    // Scroll new selection into view
+    skipScrollRef.current = true;
+    const el = document.querySelector(`[data-node-id="${newId}"]`);
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      if (rect.top < 0) {
+        window.scrollBy(0, rect.top);
+      } else if (rect.bottom > window.innerHeight) {
+        window.scrollBy(0, rect.bottom - window.innerHeight);
+      }
+    }
+  }, [displayNodes, nodes, setEditingId, setSelectedId, setSelectedIdsWrapped]);
+
   const nodeCount = useMemo(() => countAllNodes(nodes), [nodes]);
 
   // Collect search-matching node IDs in display order
@@ -937,15 +978,12 @@ export default function Home() {
               selectionAnchorRef.current = selectedId;
             }
             const anchorId = selectionAnchorRef.current;
-            setSelectedId(newId);
 
-            // Check if anchor and new selection are siblings
+            // Check if anchor and new selection are siblings — if not, stop
             const range = getSiblingRange(nodes, anchorId, newId);
             if (range) {
+              setSelectedId(newId);
               setSelectedIdsWrapped(new Set(range));
-            } else {
-              // Not siblings — no multi-selection, just move main selection
-              setSelectedIdsWrapped(new Set());
             }
           } else {
             // Normal arrow: clear multi-selection
@@ -1328,6 +1366,7 @@ export default function Home() {
               onDeselect={deselectNode}
               onMoveToPreviousEnd={moveToPreviousEnd}
               onMoveToNextStart={moveToNextStart}
+              onShiftBoundary={shiftBoundary}
               onDragStart={setDragId}
               onDrop={handleDrop}
               onDragEnd={handleDragEnd}
