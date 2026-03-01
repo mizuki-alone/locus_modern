@@ -276,7 +276,7 @@ export default function TreeNode({
           <textarea
             ref={textareaRef}
             rows={1}
-            className="flex-1 bg-transparent px-0 outline-none border-none resize-none overflow-hidden leading-snug caret-blue-500"
+            className="flex-1 bg-transparent px-0 outline-none border-none resize-none overflow-hidden caret-blue-500"
             value={editText}
             onChange={(e) => {
               onEditTextChange(e.target.value);

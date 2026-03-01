@@ -290,22 +290,21 @@ export default function Home() {
     (text: string) => {
       if (editingIdRef.current === null) return;
       const currentId = editingIdRef.current;
-      const visible = flattenVisible(
-        searchQuery ? filterTree(nodesRef.current, searchQuery) : nodesRef.current
-      );
-      const currentIndex = visible.findIndex((n) => n.id === currentId);
-      if (currentIndex <= 0) return;
 
-      const prevNode = visible[currentIndex - 1];
-      const result = mergeNodes(nodesRef.current, prevNode.id, currentId, prevNode.text, text);
+      // Only merge with previous sibling (not parent or unrelated node)
+      const ctx = findParentContext(nodesRef.current, currentId);
+      if (!ctx || ctx.index <= 0) return;
+
+      const prevSibling = ctx.siblings[ctx.index - 1];
+      const result = mergeNodes(nodesRef.current, prevSibling.id, currentId, prevSibling.text, text);
       if (!result) return;
 
       setEditingId(null);
       update(result.tree);
-      setSelectedId(prevNode.id);
-      startEdit(prevNode.id, result.joinPoint);
+      setSelectedId(prevSibling.id);
+      startEdit(prevSibling.id, result.joinPoint);
     },
-    [searchQuery, update, setSelectedId, startEdit, setEditingId]
+    [update, setSelectedId, startEdit, setEditingId]
   );
 
   const mergeWithNext = useCallback(
@@ -424,18 +423,7 @@ export default function Home() {
     );
     const currentIndex = visible.findIndex((n) => n.id === currentId);
 
-    if (currentIndex >= visible.length - 1) {
-      // Last node: add new sibling after
-      const newId = nextId(tree);
-      const result = addSiblingNode(tree, currentId, newId);
-      if (result) {
-        update(result.tree);
-        addOriginRef.current = currentId;
-        startEdit(newId, 0);
-        setEditText("");
-      }
-      return;
-    }
+    if (currentIndex >= visible.length - 1) return;
 
     const nextNodeId = visible[currentIndex + 1].id;
     setSelectedId(nextNodeId);
@@ -582,6 +570,8 @@ export default function Home() {
         setEditingId(null);
         const visibleNow = flattenVisible(displayNodes);
         const currentIndex = visibleNow.findIndex((n) => n.id === selectedId);
+        const ctx = findParentContext(nodes, selectedId);
+        const isLastChild = ctx && ctx.index === ctx.siblings.length - 1;
         const newNodes = selectedIds.size > 0
           ? deleteNodes(nodes, selectedIds)
           : deleteNode(nodes, selectedId);
@@ -593,12 +583,14 @@ export default function Home() {
         );
         if (newVisible.length === 0) {
           setSelectedId(null);
+        } else if (!isLastChild && currentIndex < newVisible.length) {
+          // Not last child: move to next node (same index after deletion)
+          startEdit(newVisible[currentIndex].id, 0);
         } else if (currentIndex > 0) {
-          // Move to previous node
+          // Last child: move to previous node
           const prevIndex = Math.min(currentIndex - 1, newVisible.length - 1);
           startEdit(newVisible[prevIndex].id, newVisible[prevIndex].text.length);
         } else {
-          // Was first node — move to new first
           startEdit(newVisible[0].id, 0);
         }
         return;
@@ -934,17 +926,6 @@ export default function Home() {
           newIndex = currentIndex - 1;
         } else if (e.key === "ArrowDown" && currentIndex < visible.length - 1) {
           newIndex = currentIndex + 1;
-        } else if (e.key === "ArrowDown" && currentIndex === visible.length - 1) {
-          // Last node: add new sibling after
-          const newId = nextId(nodes);
-          const result = addSiblingNode(nodes, selectedId, newId);
-          if (result) {
-            update(result.tree);
-            addOriginRef.current = selectedId;
-            startEdit(newId, 0);
-            setEditText("");
-          }
-          return;
         }
 
         if (newIndex !== currentIndex) {
