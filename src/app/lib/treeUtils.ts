@@ -444,6 +444,39 @@ export function pasteNodes(
   return tree;
 }
 
+/** Paste multiple copied nodes as siblings before the target node */
+export function pasteNodesBefore(
+  nodes: TreeNodeData[],
+  targetId: number,
+  copied: TreeNodeData[],
+  startId: number
+): TreeNodeData[] {
+  if (copied.length === 0) return nodes;
+  const tree = cloneTree(nodes);
+  const ctx = findParentContext(tree, targetId);
+  if (!ctx) return tree;
+
+  const target = ctx.siblings[ctx.index];
+  let currentId = startId;
+
+  const clones: TreeNodeData[] = [];
+  for (const node of copied) {
+    const clone = cloneTree([node])[0];
+    const indentDelta = target.indent - clone.indent;
+    function adjustIndent(n: TreeNodeData, delta: number) {
+      n.indent += delta;
+      n.children.forEach((c) => adjustIndent(c, delta));
+    }
+    adjustIndent(clone, indentDelta);
+    currentId = reassignIds(clone, currentId);
+    clones.push(clone);
+  }
+
+  // Insert all before target
+  ctx.siblings.splice(ctx.index, 0, ...clones);
+  return tree;
+}
+
 /** Check if ancestorId is an ancestor of nodeId */
 function isAncestor(
   nodes: TreeNodeData[],

@@ -39,10 +39,10 @@ interface TreeNodeProps {
   onDeselect: () => void;
   onMoveToPreviousEnd: (cursorPos?: number) => void;
   onMoveToNextStart: () => void;
-  onShiftBoundary: (direction: 'up' | 'down') => void;
+  onShiftBoundary: (direction: 'up' | 'down', fromStart: boolean) => void;
   onTreeCopy: () => void;
   onTreeCut: () => void;
-  onTreePaste: (() => void) | null;
+  onTreePaste: ((atStart: boolean) => void) | null;
   onTextCopied: () => void;
   onDragStart: (id: number) => void;
   onDrop: (dragId: number, targetId: number, position: "before" | "after" | "child", indent?: number) => void;
@@ -285,6 +285,7 @@ export default function TreeNode({
             ref={textareaRef}
             rows={1}
             className="flex-1 bg-transparent px-0 outline-none border-none resize-none overflow-hidden caret-blue-500"
+            style={{ overflowWrap: "break-word", wordBreak: "break-all" }}
             value={editText}
             onChange={(e) => {
               onEditTextChange(e.target.value);
@@ -335,6 +336,11 @@ export default function TreeNode({
                 return;
               }
 
+              // Ctrl+Shift+L: let bubble for toggle OL
+              if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "l") {
+                return;
+              }
+
               // Ctrl+C: tree-level copy (only when no text is selected)
               if (e.ctrlKey && e.key === "c") {
                 const ta = e.currentTarget as HTMLTextAreaElement;
@@ -365,10 +371,12 @@ export default function TreeNode({
 
               // Ctrl+V: tree-level paste if clipboard has content
               if (e.ctrlKey && e.key === "v" && onTreePaste) {
+                const ta = e.currentTarget as HTMLTextAreaElement;
+                const atStart = ta.selectionStart === 0 && ta.selectionEnd === 0;
                 e.preventDefault();
                 e.stopPropagation();
                 onEditConfirm();
-                onTreePaste();
+                onTreePaste(atStart);
                 return;
               }
 
@@ -376,13 +384,17 @@ export default function TreeNode({
               if ((e.key === "ArrowUp" || e.key === "ArrowDown") && e.shiftKey) {
                 const ta = e.currentTarget;
                 const isDown = e.key === "ArrowDown";
+                const atStart = ta.selectionStart === 0;
+                const atEnd = ta.selectionEnd === editText.length;
                 const atBoundary = isDown
-                  ? ta.selectionEnd === editText.length
-                  : ta.selectionStart === 0;
+                  ? atEnd || atStart
+                  : atStart || atEnd;
                 if (atBoundary) {
                   e.preventDefault();
                   onEditConfirm();
-                  onShiftBoundary(isDown ? 'down' : 'up');
+                  // fromStart: cursor at pos 0 with no selection (not text-selected to start)
+                  const noSelection = ta.selectionStart === ta.selectionEnd;
+                  onShiftBoundary(isDown ? 'down' : 'up', atStart && noSelection);
                 }
                 e.stopPropagation();
                 return;
@@ -392,16 +404,14 @@ export default function TreeNode({
               if (e.key === "ArrowUp" || e.key === "ArrowDown") {
                 const ta = e.currentTarget;
                 const isDown = e.key === "ArrowDown";
-                const atBoundary = isDown
-                  ? ta.selectionStart === editText.length && ta.selectionEnd === editText.length
-                  : ta.selectionStart === 0 && ta.selectionEnd === 0;
-                if (atBoundary) {
+                const atEnd = ta.selectionStart === editText.length && ta.selectionEnd === editText.length;
+                const atStart = ta.selectionStart === 0 && ta.selectionEnd === 0;
+                if (isDown && (atEnd || atStart)) {
                   e.preventDefault();
-                  if (isDown) {
-                    onMoveToNextStart();
-                  } else {
-                    onMoveToPreviousEnd(0);
-                  }
+                  onMoveToNextStart();
+                } else if (!isDown && atStart) {
+                  e.preventDefault();
+                  onMoveToPreviousEnd(0);
                 }
                 e.stopPropagation();
                 return;
@@ -519,7 +529,7 @@ export default function TreeNode({
             onCopy={onTextCopied}
           />
         ) : (
-          <span className="whitespace-pre-wrap">
+          <span className="whitespace-pre-wrap" style={{ overflowWrap: "break-word", wordBreak: "break-all" }}>
             {node.text ? (
               <HighlightedText text={node.text} query={searchQuery || ""} />
             ) : (

@@ -25,6 +25,7 @@ import {
   copyNodes,
   pasteNode,
   pasteNodes,
+  pasteNodesBefore,
   moveNode,
   countAllNodes,
   treeToText,
@@ -466,15 +467,32 @@ export default function Home() {
     startEdit(nextNodeId, 0);
   }, [editText, searchQuery, update, setSelectedId, startEdit, setEditingId]);
 
-  const shiftBoundary = useCallback((direction: 'up' | 'down') => {
+  const shiftBoundary = useCallback((direction: 'up' | 'down', fromStart = false) => {
     const id = editingIdRef.current ?? selectedIdRef.current;
     if (id === null) return;
 
     setEditingId(null);
 
-    // First call from editing: just select current node, don't move yet
+    // First call from editing
     if (selectionAnchorRef.current === null) {
       selectionAnchorRef.current = id;
+      if (direction === 'down') {
+        // Down: just select current node first
+        setSelectedId(id);
+        setSelectedIdsWrapped(new Set([id]));
+        return;
+      }
+      if (direction === 'up' && fromStart) {
+        // Up from text start: select previous node only (text editor behavior)
+        const visible = flattenVisible(displayNodes);
+        const currentIndex = visible.findIndex(n => n.id === id);
+        if (currentIndex <= 0) return;
+        const prevId = visible[currentIndex - 1].id;
+        setSelectedId(prevId);
+        setSelectedIdsWrapped(new Set([prevId]));
+        return;
+      }
+      // Up from text end: select current node
       setSelectedId(id);
       setSelectedIdsWrapped(new Set([id]));
       return;
@@ -513,24 +531,21 @@ export default function Home() {
     }
   }, [displayNodes, nodes, setEditingId, setSelectedId, setSelectedIdsWrapped]);
 
-  const treePaste = useCallback(() => {
+  const treePaste = useCallback((atStart = false) => {
     const id = selectedIdRef.current;
     if (id === null || clipboardRef.current.length === 0) return;
     const startId = nextId(nodesRef.current);
-    const newNodes = pasteNodes(nodesRef.current, id, clipboardRef.current, startId);
+    const newNodes = atStart
+      ? pasteNodesBefore(nodesRef.current, id, clipboardRef.current, startId)
+      : pasteNodes(nodesRef.current, id, clipboardRef.current, startId);
     update(newNodes);
-    // Select last pasted node
-    const visible = flattenVisible(
-      searchQuery ? filterTree(newNodes, searchQuery) : newNodes
-    );
-    const targetIndex = visible.findIndex((n) => n.id === id);
-    if (targetIndex !== -1 && targetIndex + clipboardRef.current.length < visible.length) {
-      setSelectedId(visible[targetIndex + clipboardRef.current.length].id);
-    }
+    // Re-enter editing on the same node to allow consecutive pastes
+    const cursorPos = atStart ? 0 : undefined;
+    startEdit(id, cursorPos);
     setClipboardMsg(`Pasted ${clipboardRef.current.length} node(s)`);
     if (clipboardMsgTimer.current) clearTimeout(clipboardMsgTimer.current);
     clipboardMsgTimer.current = setTimeout(() => setClipboardMsg(null), 2000);
-  }, [searchQuery, update, setSelectedId]);
+  }, [searchQuery, update, startEdit]);
 
   const treeCopy = useCallback(() => {
     const id = selectedIdRef.current;
@@ -551,6 +566,7 @@ export default function Home() {
   }, []);
 
   const textCopied = useCallback(() => {
+    setHasTreeClipboard(false);
     setClipboardMsg("Text copied");
     if (clipboardMsgTimer.current) clearTimeout(clipboardMsgTimer.current);
     clipboardMsgTimer.current = setTimeout(() => setClipboardMsg(null), 2000);
@@ -862,6 +878,14 @@ export default function Home() {
         return;
       }
 
+      // Ctrl+Shift+L: toggle OL (works during editing)
+      if (key === "l" && e.ctrlKey && e.shiftKey && selectedId !== null) {
+        e.preventDefault();
+        const newNodes = toggleOl(nodes, selectedId);
+        update(newNodes);
+        return;
+      }
+
       // Don't handle other keys while editing (input handles its own keys)
       // Arrow up/down pass through after confirm (editingIdRef is already cleared)
       if (editingIdRef.current !== null) return;
@@ -1070,14 +1094,6 @@ export default function Home() {
         } else {
           setSelectedId(newVisible[newVisible.length - 1].id);
         }
-        return;
-      }
-
-      // Ctrl+Shift+L: toggle OL
-      if (key === "l" && e.ctrlKey && e.shiftKey && selectedId !== null) {
-        e.preventDefault();
-        const newNodes = toggleOl(nodes, selectedId);
-        update(newNodes);
         return;
       }
 
